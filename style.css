@@ -1,0 +1,85 @@
+/* Background Utama & Warna Teks */
+.stApp {
+  background-color: #0e1117; /* Background Gelap Utama */
+  color: #fafafa; /* Teks Putih */
+}
+
+/* Sidebar */
+[data-testid="stSidebar"] {
+  background-color: #1e1e1e; /* Background Sidebar Sedikit Lebih Terang */
+  border-right: 1px solid #333;
+}
+
+/* Judul Utama */
+h1 {
+  color: #00a3ff; /* Biru Cerah untuk Judul Utama */
+}
+
+/* Sub-Judul */
+h2,
+h3 {
+  color: #00c4ff; /* Biru Sedikit Lebih Muda */
+  border-bottom: 2px solid #333;
+  padding-bottom: 5px;
+}
+
+/* Kotak Metrik (KPI) */
+[data-testid="stMetric"] {
+  background-color: #1e1e1e;
+  border: 1px solid #333;
+  border-radius: 10px; /* Sudut membulat */
+  padding: 20px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3); /* Bayangan halus */
+}
+
+/* Label Metrik (Teks kecil di atas angka) */
+[data-testid="stMetricLabel"] {
+  color: #aaaaaa; /* Abu-abu muda untuk label */
+}
+
+/* Angka Metrik */
+[data-testid="stMetricValue"] {
+  color: #fafafa; /* Teks Putih */
+}
+
+/* Kotak Info (st.info) */
+.stAlert[data-baseweb="alert"] {
+  background-color: #1e1e1e;
+  color: #eaeaea;
+  border-left: 5px solid #00a3ff;
+  border-radius: 5px;
+}
+
+/* Kontainer Grafik */
+.stAltairChart {
+  background-color: #1e1e1e;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid #333;
+}
+
+/* Kontainer Tabel Data */
+[data-testid="stDataFrame"] {
+  border-radius: 10px;
+  overflow: hidden; /* Penting agar border-radius berfungsi */
+}
+
+/* Header Tabel Data */
+.stDataFrame thead {
+  background-color: #00a3ff;
+  color: #121212; /* Teks Header Gelap */
+}
+.stDataFrame thead th {
+  color: #121212;
+}
+
+/* Baris Tabel Data (Zebra Stripes) */
+.stDataFrame tbody tr:nth-of-type(even) {
+  background-color: #1e1e1e;
+}
+.stDataFrame tbody tr:nth-of-type(odd) {
+  background-color: #2a2a2a;
+}
+.stDataFrame tbody td {
+  color: #eaeaea; /* Teks di dalam tabel */
+}
