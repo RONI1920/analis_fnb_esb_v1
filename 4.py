@@ -7,7 +7,7 @@ import numpy as np  # Diperlukan untuk kalkulasi margin
 
 # --- Konfigurasi Halaman Streamlit ---
 st.set_page_config(
-    page_title="Dashboard KPI Milky Way",
+    page_title="Data Driven Analyst Dashboard KPI - Milky Way Lippo Mall Puri",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -634,7 +634,7 @@ def create_vertical_bar_chart(
 
 # --- Tampilan Utama Dashboard (Main UI) ---
 
-st.title("📈 Dashboard KPI - Milky Way Lippo Mall Puri")
+st.title("📈 Data Driven Analyst Dashboard KPI - Milky Way Lippo Mall Puri")
 
 # 1. Widget File Uploader di Sidebar
 with st.sidebar:

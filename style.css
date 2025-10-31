@@ -83,3 +83,18 @@ h3 {
 .stDataFrame tbody td {
   color: #eaeaea; /* Teks di dalam tabel */
 }
+
+/* style.css */
+
+/* Ini adalah gaya umum untuk container di sidebar, mungkin perlu disesuaikan */
+.stSidebar .stImage {
+  text-align: center; /* Untuk menengahkan parent container image */
+  margin-bottom: 1rem; /* Sedikit spasi di bawah logo */
+}
+
+/* Jika di masa depan class .css-pkzbrn tidak berfungsi, coba ini: */
+.stSidebar img {
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+}
