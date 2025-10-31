@@ -1,45 +1,133 @@
-/* Background Utama & Warna Teks */
+/* ------------------------------------- */
+/* 1. ANIMASI GLOBAL */
+/* ------------------------------------- */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Terapkan Fade-in ke seluruh aplikasi saat dimuat */
 .stApp {
   background-color: #0e1117; /* Background Gelap Utama */
   color: #fafafa; /* Teks Putih */
+  animation: fadeIn 0.8s ease-out;
+  padding-bottom: 50px; /* PENTING: Tambahkan padding bawah agar konten tidak tertutup footer */
 }
+
+/* Konten Expander (Muncul dengan halus saat dibuka) */
+.streamlit-expanderContent {
+  animation: fadeIn 0.5s ease-out;
+}
+
+/* Judul dan Subjudul di Konten Utama (Muncul lebih dulu) */
+.stApp h1,
+.stApp h2,
+.stApp h3 {
+  animation: fadeIn 0.6s ease-out forwards;
+}
+
+/* ------------------------------------- */
+/* 2. BACKGROUND & WARNA TEKS */
+/* ------------------------------------- */
 
 /* Sidebar */
 [data-testid="stSidebar"] {
   background-color: #1e1e1e; /* Background Sidebar Sedikit Lebih Terang */
   border-right: 1px solid #333;
+  padding-top: 5px;
 }
 
-/* Judul Utama */
-h1 {
+/* Judul Utama Konten */
+.stApp h1 {
   color: #00a3ff; /* Biru Cerah untuk Judul Utama */
 }
 
-/* Sub-Judul */
-h2,
-h3 {
+/* Sub-Judul Konten Utama */
+.stApp h2,
+.stApp h3 {
   color: #00c4ff; /* Biru Sedikit Lebih Muda */
   border-bottom: 2px solid #333;
   padding-bottom: 5px;
 }
 
-/* Kotak Metrik (KPI) */
+/* ------------------------------------- */
+/* 3. WIDGET & KOMPONEN */
+/* ------------------------------------- */
+
+/* Sidebar Header Text (RONI HIDAYAT / DATA DRIVEN SPECIALYST FNB) */
+[data-testid="stSidebar"] h1 {
+  /* Gaya untuk 'DATA DRIVEN' */
+  margin: 0 !important;
+  padding: 0 !important;
+  line-height: 1;
+  font-size: 3.5rem;
+}
+[data-testid="stSidebar"] h2 {
+  /* Gaya untuk 'SPECIALYST FNB' */
+  margin: 0 !important;
+  padding: 0 !important;
+  line-height: 1;
+  font-size: 2.5rem;
+}
+
+/* Header Upload Data (st.header("Upload Data") yang tampil di sidebar) */
+/* PERBAIKAN AKHIR: Menargetkan elemen H3 Streamlit di sidebar secara spesifik */
+[data-testid="stSidebar"] [data-testid="stText"] h2 {
+  font-size: 1.15rem !important;
+  color: #fafafa !important; /* Mengubah warna teks menjadi putih */
+  margin-top: 25px !important;
+  margin-bottom: 10px !important;
+  padding-bottom: 0 !important;
+  border-bottom: none !important;
+}
+
+/* Menargetkan semua label input di sidebar (untuk font putih) */
+[data-testid="stSidebar"] label {
+  color: #fafafa !important;
+}
+
+/* Menargetkan teks st.header/st.subheader di sidebar (jika h3 tidak bekerja) */
+[data-testid="stSidebar"] .stText > h3,
+[data-testid="stSidebar"] .stText h3 {
+  font-size: 1.15rem !important;
+  color: #fafafa !important;
+}
+
+.stFileUploader {
+  margin-top: 15px; /* Jarak antar file uploader */
+  margin-bottom: 15px;
+}
+
+/* Kotak Metrik (KPI) - dengan transisi hover */
 [data-testid="stMetric"] {
   background-color: #1e1e1e;
   border: 1px solid #333;
-  border-radius: 10px; /* Sudut membulat */
+  border-radius: 10px;
   padding: 20px;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3); /* Bayangan halus */
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  transition: all 0.3s ease-in-out; /* Transisi untuk animasi */
 }
 
-/* Label Metrik (Teks kecil di atas angka) */
+/* Efek Hover untuk Kotak Metrik */
+[data-testid="stMetric"]:hover {
+  transform: translateY(-5px); /* Sedikit terangkat */
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5); /* Bayangan lebih besar */
+}
+
+/* Label Metrik */
 [data-testid="stMetricLabel"] {
-  color: #aaaaaa; /* Abu-abu muda untuk label */
+  color: #aaaaaa;
 }
 
 /* Angka Metrik */
 [data-testid="stMetricValue"] {
-  color: #fafafa; /* Teks Putih */
+  color: #fafafa;
 }
 
 /* Kotak Info (st.info) */
@@ -50,24 +138,48 @@ h3 {
   border-radius: 5px;
 }
 
-/* Kontainer Grafik */
+/* ------------------------------------- */
+/* 4. TAB NAVIGATION & INTERAKSI */
+/* ------------------------------------- */
+
+/* Kontainer Grafik - dengan transisi hover */
 .stAltairChart {
   background-color: #1e1e1e;
   padding: 10px;
   border-radius: 10px;
   border: 1px solid #333;
+  transition: all 0.3s ease-in-out;
+}
+.stAltairChart:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
 }
 
-/* Kontainer Tabel Data */
+/* Tombol Tab (Memperbesar Font) - dengan transisi hover */
+/* Font size dipertahankan di app.py menggunakan inline CSS untuk spesifisitas */
+.stTabs [data-baseweb="tab-list"] button {
+  padding: 10px 15px;
+  transition: all 0.2s ease-in-out;
+}
+.stTabs [data-baseweb="tab-list"] button:hover {
+  background-color: #00a3ff;
+  color: #1e1e1e;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* ------------------------------------- */
+/* 5. TABEL DATA */
+/* ------------------------------------- */
 [data-testid="stDataFrame"] {
   border-radius: 10px;
-  overflow: hidden; /* Penting agar border-radius berfungsi */
+  overflow: hidden;
 }
 
 /* Header Tabel Data */
 .stDataFrame thead {
   background-color: #00a3ff;
-  color: #121212; /* Teks Header Gelap */
+  color: #121212;
 }
 .stDataFrame thead th {
   color: #121212;
@@ -81,20 +193,55 @@ h3 {
   background-color: #2a2a2a;
 }
 .stDataFrame tbody td {
-  color: #eaeaea; /* Teks di dalam tabel */
+  color: #eaeaea;
 }
 
-/* style.css */
-
-/* Ini adalah gaya umum untuk container di sidebar, mungkin perlu disesuaikan */
-.stSidebar .stImage {
-  text-align: center; /* Untuk menengahkan parent container image */
-  margin-bottom: 1rem; /* Sedikit spasi di bawah logo */
+/* ------------------------------------- */
+/* 6. FOOTER TETAP (STICKY FOOTER) */
+/* ------------------------------------- */
+.stApp footer {
+  display: none !important; /* Sembunyikan footer Streamlit bawaan */
 }
 
-/* Jika di masa depan class .css-pkzbrn tidak berfungsi, coba ini: */
-.stSidebar img {
-  display: block;
-  margin-left: auto;
-  margin-right: auto;
+#custom-footer {
+  position: fixed; /* Membuat footer menempel di layar */
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  background-color: #1e1e1e; /* Warna latar belakang sama dengan sidebar/metrik */
+  color: #fafafa; /* UBAH WARNA TEKS FOOTER MENJADI PUTIH */
+  padding: 15px 30px; /* TAMBAH PADDING UNTUK LEBAR YANG LEBIH RAPI */
+  border-top: 1px solid #333;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.5);
+  z-index: 100; /* Pastikan ia berada di atas elemen lain */
+  display: flex;
+  justify-content: space-between; /* Memisahkan konten kiri dan kanan */
+  align-items: center;
+}
+
+#custom-footer a {
+  color: #00a3ff; /* Warna tautan biru */
+  text-decoration: none;
+  padding: 0 10px;
+  transition: color 0.2s;
+}
+
+#custom-footer a:hover {
+  color: #fafafa; /* Warna putih saat di-hover */
+}
+
+#custom-footer .copyright {
+  font-size: 0.85rem;
+}
+
+#custom-footer .links {
+  font-size: 0.85rem;
+}
+
+#custom-footer .links a:first-child {
+  padding-left: 0; /* Hapus padding kiri pada tautan pertama */
+}
+
+#custom-footer .links a:last-child {
+  padding-right: 0; /* Hapus padding kanan pada tautan terakhir */
 }

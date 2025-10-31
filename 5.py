@@ -29,6 +29,23 @@ def load_css(file_name):
 load_css("style.css")
 # -------------------------------------------
 
+# --- CSS KUSTOM UNTUK MEMPERBESAR TULISAN TAB (DIPERTAHANKAN UNTUK KONSISTENSI) ---
+# Namun karena spesifisitas inline CSS di Streamlit, kita pertahankan:
+st.markdown(
+    """
+<style>
+/* Target kelas tab Streamlit untuk memastikan ukuran font lebih besar */
+.stTabs [data-baseweb="tab-list"] button {
+    font-size: 1.25rem; /* Ukuran font lebih besar */
+    padding: 10px 15px; /* Tambah padding agar area klik nyaman */
+}
+</style>
+""",
+    unsafe_allow_html=True,
+)
+# -----------------------------------------------------------------
+
+
 # --- Fungsi Bantuan (Helpers) ---
 
 
@@ -638,9 +655,17 @@ st.title("📈 Data Driven Analyst Dashboard KPI - Milky Way Lippo Mall Puri")
 
 # 1. Widget File Uploader di Sidebar
 with st.sidebar:
-    st.image(
-        "image/logo.png",
-        width=150,
+    # Mengganti logo dengan teks yang lebih besar dan terpisah baris
+    # MENGHAPUS INLINE STYLE AGAR CSS EKSTERNAL DARI style.css BERFUNGSI
+    st.markdown(
+        """
+        <div style='text-align: center; margin-bottom: 20px;'>
+            <h2>DATA DRIVEN</h2>
+            <h2>SPECIALYST FNB</h2>
+            <p style='font-size: 0.9rem; color: #aaaaaa; margin-top: 5px;'>Developer: @ronihidayat</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
     st.header("Upload Data")
 
@@ -825,7 +850,7 @@ tab1, tab2, tab3 = st.tabs(
     [
         "📊 Analisis Penjualan (KPI)",
         "💰 Analisis COGS & Profit",
-        "🧑‍🍳 Analisis Waiter & Waktu",
+        "🧑‍🍳 Analisis SDM & Waktu",  # NAMA TAB KETIGA DIGANTI
     ]
 )
 
@@ -839,237 +864,290 @@ with tab1:
             st.subheader(f"Periode Analisis: {start_date} s.d. {end_date}")
 
             # --- 1. Ringkasan Kinerja Penjualan ---
-            st.header("📊 KPI Kinerja Penjualan")
-            # Gunakan 'filtered_gmv'
-            kpi = calculate_sales_kpi(filtered_gmv)
+            with st.expander(
+                "📈 KPI Kinerja Penjualan (Revenue, ATV, IPB)", expanded=True
+            ):
+                st.header("📊 KPI Kinerja Penjualan")
+                # Gunakan 'filtered_gmv'
+                kpi = calculate_sales_kpi(filtered_gmv)
 
-            col1, col2, col3 = st.columns(3)
-            col1.metric(
-                "💰 Total Pendapatan Kotor",
-                format_rupiah(kpi["Total Pendapatan Kotor"]),
-            )
-            col2.metric(
-                "💵 Total Penjualan Bersih (Nett)",
-                format_rupiah(kpi["Total Penjualan Bersih (Nett)"]),
-            )
-            col3.metric("🧾 Total Transaksi", f"{kpi['Total Transaksi']} Transaksi")
-
-            col4, col5, col6 = st.columns(3)
-            col4.metric(
-                "💸 Rata-rata Nilai Transaksi (ATV)",
-                format_rupiah(kpi["Rata-rata Nilai Transaksi (ATV)"]),
-            )
-            col5.metric(
-                "📦 Total Item Terjual", f"{kpi['Total Item Terjual']:,.0f} Items"
-            )
-            col6.metric(
-                "🛍️ Item per Transaksi (IPB)", f"{kpi['Item per Transaksi (IPB)']:.2f}"
-            )
-
-            # Expander untuk Service, Tax, Diskon (Data dari GMV)
-            with st.expander("Lihat Rincian Pendapatan (Diskon, Service, Pajak)"):
-                exp_col1, exp_col2, exp_col3 = st.columns(3)
-                exp_col1.metric("📉 Total Diskon", format_rupiah(kpi["Total Diskon"]))
-                exp_col2.metric(
-                    "🛎️ Total Service Charge", format_rupiah(kpi["Total Service Charge"])
+                col1, col2, col3 = st.columns(3)
+                col1.metric(
+                    "💰 Total Pendapatan Kotor",
+                    format_rupiah(kpi["Total Pendapatan Kotor"]),
                 )
-                exp_col3.metric("🧾 Total Pajak", format_rupiah(kpi["Total Pajak"]))
+                col2.metric(
+                    "💵 Total Penjualan Bersih (Nett)",
+                    format_rupiah(kpi["Total Penjualan Bersih (Nett)"]),
+                )
+                col3.metric("🧾 Total Transaksi", f"{kpi['Total Transaksi']} Transaksi")
+
+                col4, col5, col6 = st.columns(3)
+                col4.metric(
+                    "💸 Rata-rata Nilai Transaksi (ATV)",
+                    format_rupiah(kpi["Rata-rata Nilai Transaksi (ATV)"]),
+                )
+                col5.metric(
+                    "📦 Total Item Terjual", f"{kpi['Total Item Terjual']:,.0f} Items"
+                )
+                col6.metric(
+                    "🛍️ Item per Transaksi (IPB)",
+                    f"{kpi['Item per Transaksi (IPB)']:.2f}",
+                )
+
+                # Expander untuk Service, Tax, Diskon (Data dari GMV)
+                with st.expander("Lihat Rincian Pendapatan (Diskon, Service, Pajak)"):
+                    exp_col1, exp_col2, exp_col3 = st.columns(3)
+                    exp_col1.metric(
+                        "📉 Total Diskon", format_rupiah(kpi["Total Diskon"])
+                    )
+                    exp_col2.metric(
+                        "🛎️ Total Service Charge",
+                        format_rupiah(kpi["Total Service Charge"]),
+                    )
+                    exp_col3.metric("🧾 Total Pajak", format_rupiah(kpi["Total Pajak"]))
 
             st.markdown("---")
 
-            col7, col8 = st.columns(2)
-            # Cek jika kolom ada
-            if "Payment Method" in filtered_gmv.columns:
-                with col7:
-                    st.subheader("💳 Penjualan per Metode Pembayaran")
-                    # Gunakan 'filtered_gmv'
-                    payment_data = get_payment_analysis(filtered_gmv)
-                    chart = create_horizontal_bar_chart(
-                        payment_data,
-                        "Total_Penjualan",
-                        "Cleaned_Payment",
-                        "Total Penjualan (Rp)",
-                        "Metode Pembayaran",
-                    )
-                    st.altair_chart(chart, use_container_width=True)
-            else:
-                with col7:
-                    st.warning("Kolom 'Payment Method' tidak ditemukan di file GMV.")
-
-            if "Visit Purpose" in filtered_gmv.columns:
-                with col8:
-                    st.subheader("🏪 Penjualan per Tipe Kunjungan")
-                    # Gunakan 'filtered_gmv'
-                    visit_data = get_visit_purpose_analysis(filtered_gmv)
-                    chart = create_horizontal_bar_chart(
-                        visit_data,
-                        "Total After Bill Discount",
-                        "Visit Purpose",
-                        "Total Penjualan (Rp)",
-                        "Tipe Kunjungan",
-                    )
-                    st.altair_chart(chart, use_container_width=True)
-            else:
-                with col8:
-                    st.warning("Kolom 'Visit Purpose' tidak ditemukan di file GMV.")
-
-            st.markdown("---")
+            # PERUBAHAN JS untuk menyembunyikan notifikasi setelah 3 detik
+            st.markdown(
+                """
+                <div id='menu_info_notice'>
+                ℹ️ Menu 'PACKAGE', 'ADDITIONAL', 'ADD-ONS', dan item gratis (Price = 0) telah disaring dari analisis performa menu.
+                </div>
+                <script>
+                // Mencari elemen st.info/st.warning terdekat
+                const menuInfo = document.getElementById('menu_info_notice');
+                if (menuInfo) {
+                    // Temukan container Streamlit terdekat yang menampung pesan info
+                    let parentElement = menuInfo.closest('.stAlert[data-baseweb="alert"]');
+                    if (parentElement) {
+                        setTimeout(() => {
+                            parentElement.style.transition = 'opacity 0.5s ease-out';
+                            parentElement.style.opacity = '0';
+                            // Hapus elemen sepenuhnya setelah transisi
+                            setTimeout(() => {
+                                parentElement.style.display = 'none';
+                            }, 500); // 500ms setelah opacity 0
+                        }, 3000); // Tunda 3 detik sebelum mulai transisi
+                    }
+                }
+                </script>
+                """,
+                unsafe_allow_html=True,
+            )
 
             # --- 2. Kinerja Menu ---
-            st.header("🍽️ KPI Kinerja Menu")
-            (
-                top_selling,
-                top_grossing,
-                top_sell_cat,
-                top_gross_cat,
-                bottom_selling,
-                bottom_grossing,
-            ) = get_menu_performance(
-                filtered_gmv
-            )  # Gunakan 'filtered_gmv'
-
-            st.info(
-                "ℹ️ Menu 'PACKAGE', 'ADDITIONAL', 'ADD-ONS', dan item gratis (Price = 0) telah disaring dari analisis performa menu."
-            )
-
-            st.subheader("🏆 Performa Menu Teratas (Top 10)")
-            col9, col10 = st.columns(2)
-            with col9:
-                st.markdown("##### Menu Terlaris (by Kuantitas)")
-                st.dataframe(
-                    top_selling.set_index("Menu").style.format(
-                        {"Qty": format_angka_bulat}
-                    )
-                )
-            with col10:
-                st.markdown("##### Menu Pendapatan Tertinggi (by Nett Sales)")
-                st.dataframe(
-                    top_grossing.set_index("Menu").style.format(
-                        {"Total Nett Sales": format_rupiah}
-                    )
-                )
-
-            col11, col12 = st.columns(2)
-            with col11:
-                chart = create_horizontal_bar_chart(
-                    top_selling, "Qty", "Menu", "Kuantitas Terjual", "Menu"
-                )
-                st.altair_chart(chart, use_container_width=True)
-            with col12:
-                chart = create_horizontal_bar_chart(
+            # PERUBAHAN 4: Menambahkan st.expander untuk bagian KPI Kinerja Menu (Teratas)
+            with st.expander(
+                "🏆 KPI Kinerja Menu (Top 10 Selling/Grossing)", expanded=True
+            ):
+                st.header("🍽️ KPI Kinerja Menu")
+                (
+                    top_selling,
                     top_grossing,
-                    "Total Nett Sales",
-                    "Menu",
-                    "Total Nett Sales (Rp)",
-                    "Menu",
-                )
-                st.altair_chart(chart, use_container_width=True)
-
-            st.subheader("📉 Performa Menu Kurang Laku (Bottom 10)")
-            col13, col14 = st.columns(2)
-            with col13:
-                st.markdown("##### Menu Paling Jarang Terjual (by Kuantitas)")
-                st.dataframe(
-                    bottom_selling.set_index("Menu").style.format(
-                        {"Qty": format_angka_bulat}
-                    )
-                )
-            with col14:
-                st.markdown("##### Menu Pendapatan Terendah (by Nett Sales)")
-                st.dataframe(
-                    bottom_grossing.set_index("Menu").style.format(
-                        {"Total Nett Sales": format_rupiah}
-                    )
-                )
-
-            col15, col16 = st.columns(2)
-            with col15:
-                chart = create_horizontal_bar_chart(
+                    top_sell_cat,
+                    top_gross_cat,
                     bottom_selling,
-                    "Qty",
-                    "Menu",
-                    "Kuantitas Terjual",
-                    "Menu",
-                    sort_order="x",
-                )
-                st.altair_chart(chart, use_container_width=True)
-            with col16:
-                chart = create_horizontal_bar_chart(
                     bottom_grossing,
-                    "Total Nett Sales",
-                    "Menu",
-                    "Total Nett Sales (Rp)",
-                    "Menu",
-                    sort_order="x",
-                )
-                st.altair_chart(chart, use_container_width=True)
+                ) = get_menu_performance(
+                    filtered_gmv
+                )  # Gunakan 'filtered_gmv'
 
+                st.subheader("🏆 Performa Menu Teratas (Top 10)")
+                col9, col10 = st.columns(2)
+                with col9:
+                    st.markdown("##### Menu Terlaris (by Kuantitas)")
+                    st.dataframe(
+                        top_selling.set_index("Menu").style.format(
+                            {"Qty": format_angka_bulat}
+                        )
+                    )
+                with col10:
+                    st.markdown("##### Menu Pendapatan Tertinggi (by Nett Sales)")
+                    st.dataframe(
+                        top_grossing.set_index("Menu").style.format(
+                            {"Total Nett Sales": format_rupiah}
+                        )
+                    )
+
+                col11, col12 = st.columns(2)
+                with col11:
+                    chart = create_horizontal_bar_chart(
+                        top_selling, "Qty", "Menu", "Kuantitas Terjual", "Menu"
+                    )
+                    st.altair_chart(chart, use_container_width=True)
+                with col12:
+                    chart = create_horizontal_bar_chart(
+                        top_grossing,
+                        "Total Nett Sales",
+                        "Menu",
+                        "Total Nett Sales (Rp)",
+                        "Menu",
+                    )
+                    st.altair_chart(chart, use_container_width=True)
+
+            # PERUBAHAN 5: Menambahkan st.expander untuk bagian KPI Kinerja Menu (Terbawah)
+            with st.expander("📉 KPI Kinerja Menu (Bottom 10 Selling/Grossing)"):
+                st.subheader("📉 Performa Menu Kurang Laku (Bottom 10)")
+                col13, col14 = st.columns(2)
+                with col13:
+                    st.markdown("##### Menu Paling Jarang Terjual (by Kuantitas)")
+                    st.dataframe(
+                        bottom_selling.set_index("Menu").style.format(
+                            {"Qty": format_angka_bulat}
+                        )
+                    )
+                with col14:
+                    st.markdown("##### Menu Pendapatan Terendah (by Nett Sales)")
+                    st.dataframe(
+                        bottom_grossing.set_index("Menu").style.format(
+                            {"Total Nett Sales": format_rupiah}
+                        )
+                    )
+
+                col15, col16 = st.columns(2)
+                with col15:
+                    chart = create_horizontal_bar_chart(
+                        bottom_selling,
+                        "Qty",
+                        "Menu",
+                        "Kuantitas Terjual",
+                        "Menu",
+                        sort_order="x",
+                    )
+                    st.altair_chart(chart, use_container_width=True)
+                with col16:
+                    chart = create_horizontal_bar_chart(
+                        bottom_grossing,
+                        "Total Nett Sales",
+                        "Menu",
+                        "Total Nett Sales (Rp)",
+                        "Menu",
+                        sort_order="x",
+                    )
+                    st.altair_chart(chart, use_container_width=True)
+
+            # PERUBAHAN 6: Menambahkan st.expander untuk bagian Kategori Menu
             if "Menu Category" in filtered_gmv.columns and not top_sell_cat.empty:
                 st.markdown("---")
-                st.subheader("🍰 Performa Kategori Menu")
-                col17, col18 = st.columns(2)
-                with col17:
-                    st.markdown("##### Kategori Terlaris (by Kuantitas)")
-                    chart = create_horizontal_bar_chart(
-                        top_sell_cat,
-                        "Qty",
-                        "Menu Category",
-                        "Kuantitas Terjual",
-                        "Kategori Menu",
-                    )
-                    st.altair_chart(chart, use_container_width=True)
-                with col18:
-                    st.markdown("##### Kategori Pendapatan Tertinggi (by Nett Sales)")
-                    chart = create_horizontal_bar_chart(
-                        top_gross_cat,
-                        "Total Nett Sales",
-                        "Menu Category",
-                        "Total Nett Sales (Rp)",
-                        "Kategori Menu",
-                    )
-                    st.altair_chart(chart, use_container_width=True)
+                with st.expander("🍰 Analisis Kategori Menu"):
+                    st.subheader("🍰 Performa Kategori Menu")
+                    col17, col18 = st.columns(2)
+                    with col17:
+                        st.markdown("##### Kategori Terlaris (by Kuantitas)")
+                        chart = create_horizontal_bar_chart(
+                            top_sell_cat,
+                            "Qty",
+                            "Menu Category",
+                            "Kuantitas Terjual",
+                            "Kategori Menu",
+                        )
+                        st.altair_chart(chart, use_container_width=True)
+                    with col18:
+                        st.markdown(
+                            "##### Kategori Pendapatan Tertinggi (by Nett Sales)"
+                        )
+                        chart = create_horizontal_bar_chart(
+                            top_gross_cat,
+                            "Total Nett Sales",
+                            "Menu Category",
+                            "Total Nett Sales (Rp)",
+                            "Kategori Menu",
+                        )
+                        st.altair_chart(chart, use_container_width=True)
+
+            st.markdown("---")
+
+            # PERUBAHAN 3: Menambahkan st.expander untuk bagian Metode Pembayaran & Tipe Kunjungan
+            with st.expander(
+                "💳 Analisis Transaksi (Pembayaran & Kunjungan)", expanded=True
+            ):
+                col7, col8 = st.columns(2)
+                # Cek jika kolom ada
+                if "Payment Method" in filtered_gmv.columns:
+                    with col7:
+                        st.subheader("💳 Penjualan per Metode Pembayaran")
+                        # Gunakan 'filtered_gmv'
+                        payment_data = get_payment_analysis(filtered_gmv)
+                        chart = create_horizontal_bar_chart(
+                            payment_data,
+                            "Total_Penjualan",
+                            "Cleaned_Payment",
+                            "Total Penjualan (Rp)",
+                            "Metode Pembayaran",
+                        )
+                        st.altair_chart(chart, use_container_width=True)
+                else:
+                    with col7:
+                        st.warning(
+                            "Kolom 'Payment Method' tidak ditemukan di file GMV."
+                        )
+
+                if "Visit Purpose" in filtered_gmv.columns:
+                    with col8:
+                        st.subheader("🏪 Penjualan per Tipe Kunjungan")
+                        # Gunakan 'filtered_gmv'
+                        visit_data = get_visit_purpose_analysis(filtered_gmv)
+                        chart = create_horizontal_bar_chart(
+                            visit_data,
+                            "Total After Bill Discount",
+                            "Visit Purpose",
+                            "Total Penjualan (Rp)",
+                            "Tipe Kunjungan",
+                        )
+                        st.altair_chart(chart, use_container_width=True)
+                else:
+                    with col8:
+                        st.warning("Kolom 'Visit Purpose' tidak ditemukan di file GMV.")
 
             st.markdown("---")
 
             # --- 3. Kinerja Operasional ---
-            st.header("⚙️ KPI Operasional & Pelanggan")
-            # Gunakan 'filtered_gmv'
-            avg_time, peak_hours, peak_days_of_week = get_operational_kpi(filtered_gmv)
-            st.metric("⏱️ Rata-rata Durasi Makan (Dine In)", f"{avg_time:.1f} menit")
+            # PERUBAHAN 7: Menambahkan st.expander untuk bagian KPI Operasional
+            with st.expander(
+                "⚙️ KPI Operasional (Jam Sibuk, Hari Sibuk, Durasi Makan)", expanded=True
+            ):
+                st.header("⚙️ KPI Operasional & Pelanggan")
+                # Gunakan 'filtered_gmv'
+                avg_time, peak_hours, peak_days_of_week = get_operational_kpi(
+                    filtered_gmv
+                )
+                st.metric("⏱️ Rata-rata Durasi Makan (Dine In)", f"{avg_time:.1f} menit")
 
-            col19, col20 = st.columns(2)
-            with col19:
-                st.subheader("🕒 Jam Sibuk (Berdasarkan Transaksi)")
-                chart = create_vertical_bar_chart(
-                    peak_hours,
-                    "Hour",
-                    "Bill Number",
-                    "Jam",
-                    "Jumlah Transaksi",
-                    x_type="O",
-                )
-                st.altair_chart(chart, use_container_width=True)
-            with col20:
-                st.subheader("🗓️ Hari Sibuk (Berdasarkan Transaksi)")
-                day_sort_order = [
-                    "Senin",
-                    "Selasa",
-                    "Rabu",
-                    "Kamis",
-                    "Jumat",
-                    "Sabtu",
-                    "Minggu",
-                ]
-                chart = create_vertical_bar_chart(
-                    peak_days_of_week,
-                    "Day Name",
-                    "Bill Number",
-                    "Hari",
-                    "Jumlah Transaksi",
-                    x_type="O",
-                    sort_order=day_sort_order,
-                )
-                st.altair_chart(chart, use_container_width=True)
+                col19, col20 = st.columns(2)
+                with col19:
+                    st.subheader("🕒 Jam Sibuk (Berdasarkan Transaksi)")
+                    chart = create_vertical_bar_chart(
+                        peak_hours,
+                        "Hour",
+                        "Bill Number",
+                        "Jam",
+                        "Jumlah Transaksi",
+                        x_type="O",
+                    )
+                    st.altair_chart(chart, use_container_width=True)
+                with col20:
+                    st.subheader("🗓️ Hari Sibuk (Berdasarkan Transaksi)")
+                    day_sort_order = [
+                        "Senin",
+                        "Selasa",
+                        "Rabu",
+                        "Kamis",
+                        "Jumat",
+                        "Sabtu",
+                        "Minggu",
+                    ]
+                    chart = create_vertical_bar_chart(
+                        peak_days_of_week,
+                        "Day Name",
+                        "Bill Number",
+                        "Hari",
+                        "Jumlah Transaksi",
+                        x_type="O",
+                        sort_order=day_sort_order,
+                    )
+                    st.altair_chart(chart, use_container_width=True)
 
             if st.checkbox("Tampilkan Data Mentah GMV (Sudah Dibersihkan)"):
                 st.dataframe(filtered_gmv)
@@ -1094,107 +1172,128 @@ with tab2:
             # Lakukan analisis profit HANYA dari file cogs yang sudah difilter
             profit_df = analyze_profit(filtered_cogs)
 
-            # Tampilkan KPI Profitabilitas
-            total_revenue = profit_df["Total Revenue (Rp)"].sum()
-            total_cogs_cost = profit_df["Total COGS (Rp)"].sum()
-            total_profit = profit_df["Total Profit (Rp)"].sum()
-            avg_margin_percent = (
-                (total_profit / total_revenue) * 100 if total_revenue > 0 else 0
-            )
+            # PERUBAHAN 8: Menambahkan st.expander untuk Ringkasan Profitabilitas
+            with st.expander(
+                "💰 Ringkasan Profitabilitas (Total Revenue, COGS, Profit)",
+                expanded=True,
+            ):
+                # Tampilkan KPI Profitabilitas
+                total_revenue = profit_df["Total Revenue (Rp)"].sum()
+                total_cogs_cost = profit_df["Total COGS (Rp)"].sum()
+                total_profit = profit_df["Total Profit (Rp)"].sum()
+                avg_margin_percent = (
+                    (total_profit / total_revenue) * 100 if total_revenue > 0 else 0
+                )
 
-            st.subheader("Ringkasan Profitabilitas")
-            p_col1, p_col2, p_col3, p_col4 = st.columns(4)
-            p_col1.metric("📈 Total Revenue (dari COGS)", format_rupiah(total_revenue))
-            p_col2.metric("📉 Total COGS", format_rupiah(total_cogs_cost))
-            p_col3.metric("💸 Total Profit", format_rupiah(total_profit))
-            p_col4.metric(
-                "📊 Rata-rata Margin Profit", format_persen(avg_margin_percent)
-            )
+                st.subheader("Ringkasan Profitabilitas")
+                p_col1, p_col2, p_col3, p_col4 = st.columns(4)
+                p_col1.metric(
+                    "📈 Total Revenue (dari COGS)", format_rupiah(total_revenue)
+                )
+                p_col2.metric("📉 Total COGS", format_rupiah(total_cogs_cost))
+                p_col3.metric("💸 Total Profit", format_rupiah(total_profit))
+                p_col4.metric(
+                    "📊 Rata-rata Margin Profit", format_persen(avg_margin_percent)
+                )
 
             st.markdown("---")
 
-            # Tampilkan tabel data profit
-            st.subheader("Rincian Profitabilitas per Menu")
-            st.info(
-                "Data ini dijumlahkan (agregasi) HANYA dari file Laporan COGS (sesuai filter waktu yang dipilih)."
-            )
+            # PERUBAHAN 9: Menambahkan st.expander untuk Rincian Profitabilitas per Menu
+            with st.expander("📝 Rincian Profitabilitas per Menu (Tabel)"):
+                # Tampilkan tabel data profit
+                st.subheader("Rincian Profitabilitas per Menu")
+                st.info(
+                    "Data ini dijumlahkan (agregasi) HANYA dari file Laporan COGS (sesuai filter waktu yang dipilih)."
+                )
 
-            # Format tabel untuk tampilan
-            formatted_df = profit_df.copy()
-            formatted_df["Harga Jual"] = formatted_df["Harga Jual"].apply(format_rupiah)
-            formatted_df["COGS"] = formatted_df["COGS"].apply(format_rupiah)
-            formatted_df["Margin (Rp)"] = formatted_df["Margin (Rp)"].apply(
-                format_rupiah
-            )
-            formatted_df["Margin (%)"] = formatted_df["Margin (%)"].apply(format_persen)
-            formatted_df["Total Revenue (Rp)"] = formatted_df[
-                "Total Revenue (Rp)"
-            ].apply(format_rupiah)
-            formatted_df["Total COGS (Rp)"] = formatted_df["Total COGS (Rp)"].apply(
-                format_rupiah
-            )
-            formatted_df["Total Profit (Rp)"] = formatted_df["Total Profit (Rp)"].apply(
-                format_rupiah
-            )
+                # Format tabel untuk tampilan
+                formatted_df = profit_df.copy()
+                formatted_df["Harga Jual"] = formatted_df["Harga Jual"].apply(
+                    format_rupiah
+                )
+                formatted_df["COGS"] = formatted_df["COGS"].apply(format_rupiah)
+                formatted_df["Margin (Rp)"] = formatted_df["Margin (Rp)"].apply(
+                    format_rupiah
+                )
+                formatted_df["Margin (%)"] = formatted_df["Margin (%)"].apply(
+                    format_persen
+                )
+                formatted_df["Total Revenue (Rp)"] = formatted_df[
+                    "Total Revenue (Rp)"
+                ].apply(format_rupiah)
+                formatted_df["Total COGS (Rp)"] = formatted_df["Total COGS (Rp)"].apply(
+                    format_rupiah
+                )
+                formatted_df["Total Profit (Rp)"] = formatted_df[
+                    "Total Profit (Rp)"
+                ].apply(format_rupiah)
 
-            st.dataframe(formatted_df.set_index("Menu"))
+                st.dataframe(formatted_df.set_index("Menu"))
 
             st.markdown("---")
-            st.subheader("Analisis Performa Profit Menu")
 
-            # Ambil Top 10 dan Bottom 10
-            top_10_profit = profit_df.nlargest(10, "Total Profit (Rp)")
-            bottom_10_profit = profit_df[profit_df["Qty"] > 0].nsmallest(
-                10, "Total Profit (Rp)"
-            )  # Hanya yg terjual
-            top_10_margin_pct = profit_df[profit_df["Qty"] > 0].nlargest(
-                10, "Margin (%)"
-            )
-            bottom_10_margin_pct = profit_df[profit_df["Qty"] > 0].nsmallest(
-                10, "Margin (%)"
-            )
+            # PERUBAHAN 10: Menambahkan st.expander untuk Analisis Performa Profit Menu
+            with st.expander(
+                "📊 Analisis Performa Profit Menu (Grafik Top & Bottom 10)",
+                expanded=True,
+            ):
+                st.subheader("Analisis Performa Profit Menu")
 
-            p_col5, p_col6 = st.columns(2)
-            with p_col5:
-                st.markdown("##### 🏆 Menu Paling Untung (by Total Profit Rp)")
-                chart = create_horizontal_bar_chart(
-                    top_10_profit,
-                    "Total Profit (Rp)",
-                    "Menu",
-                    "Total Profit (Rp)",
-                    "Menu",
+                # Ambil Top 10 dan Bottom 10
+                top_10_profit = profit_df.nlargest(10, "Total Profit (Rp)")
+                bottom_10_profit = profit_df[profit_df["Qty"] > 0].nsmallest(
+                    10, "Total Profit (Rp)"
+                )  # Hanya yg terjual
+                top_10_margin_pct = profit_df[profit_df["Qty"] > 0].nlargest(
+                    10, "Margin (%)"
                 )
-                st.altair_chart(chart, use_container_width=True)
-            with p_col6:
-                st.markdown("##### 📈 Menu Margin Tertinggi (by %)")
-                chart = create_horizontal_bar_chart(
-                    top_10_margin_pct, "Margin (%)", "Menu", "Margin (%)", "Menu"
+                bottom_10_margin_pct = profit_df[profit_df["Qty"] > 0].nsmallest(
+                    10, "Margin (%)"
                 )
-                st.altair_chart(chart, use_container_width=True)
 
-            p_col7, p_col8 = st.columns(2)
-            with p_col7:
-                st.markdown("##### 📉 Menu Paling Tidak Untung (by Total Profit Rp)")
-                chart = create_horizontal_bar_chart(
-                    bottom_10_profit,
-                    "Total Profit (Rp)",
-                    "Menu",
-                    "Total Profit (Rp)",
-                    "Menu",
-                    sort_order="x",
-                )
-                st.altair_chart(chart, use_container_width=True)
-            with p_col8:
-                st.markdown("##### 📉 Menu Margin Terendah (by %)")
-                chart = create_horizontal_bar_chart(
-                    bottom_10_margin_pct,
-                    "Margin (%)",
-                    "Menu",
-                    "Margin (%)",
-                    "Menu",
-                    sort_order="x",
-                )
-                st.altair_chart(chart, use_container_width=True)
+                p_col5, p_col6 = st.columns(2)
+                with p_col5:
+                    st.markdown("##### 🏆 Menu Paling Untung (by Total Profit Rp)")
+                    chart = create_horizontal_bar_chart(
+                        top_10_profit,
+                        "Total Profit (Rp)",
+                        "Menu",
+                        "Total Profit (Rp)",
+                        "Menu",
+                    )
+                    st.altair_chart(chart, use_container_width=True)
+                with p_col6:
+                    st.markdown("##### 📈 Menu Margin Tertinggi (by %)")
+                    chart = create_horizontal_bar_chart(
+                        top_10_margin_pct, "Margin (%)", "Menu", "Margin (%)", "Menu"
+                    )
+                    st.altair_chart(chart, use_container_width=True)
+
+                p_col7, p_col8 = st.columns(2)
+                with p_col7:
+                    st.markdown(
+                        "##### 📉 Menu Paling Tidak Untung (by Total Profit Rp)"
+                    )
+                    chart = create_horizontal_bar_chart(
+                        bottom_10_profit,
+                        "Total Profit (Rp)",
+                        "Menu",
+                        "Total Profit (Rp)",
+                        "Menu",
+                        sort_order="x",
+                    )
+                    st.altair_chart(chart, use_container_width=True)
+                with p_col8:
+                    st.markdown("##### 📉 Menu Margin Terendah (by %)")
+                    chart = create_horizontal_bar_chart(
+                        bottom_10_margin_pct,
+                        "Margin (%)",
+                        "Menu",
+                        "Margin (%)",
+                        "Menu",
+                        sort_order="x",
+                    )
+                    st.altair_chart(chart, use_container_width=True)
 
         elif filtered_cogs is not None and filtered_cogs.empty:
             st.warning(
@@ -1216,76 +1315,80 @@ with tab3:
             # --- FILTER SUDAH DIPINDAHKAN KE ATAS ---
 
             # 1. Analisis Waktu
-            st.subheader("🕒 Waktu Kunjungan Pelanggan")
-            # Gunakan data yang sudah difilter
-            time_data = get_peak_time_analysis(filtered_waiter)
+            # PERUBAHAN 11: Menambahkan st.expander untuk Analisis Waktu Kunjungan
+            with st.expander("🕒 Analisis Waktu Kunjungan Pelanggan", expanded=True):
+                st.subheader("🕒 Waktu Kunjungan Pelanggan")
+                # Gunakan data yang sudah difilter
+                time_data = get_peak_time_analysis(filtered_waiter)
 
-            t_col1, t_col2 = st.columns(2)
-            with t_col1:
-                st.markdown("##### Berdasarkan Jumlah Transaksi")
-                # Tentukan urutan manual untuk grafik
-                sort_order_time = [
-                    "Breakfast/Brunch (10-12)",
-                    "Lunch (12-17)",
-                    "Dinner (17-22)",
-                    "Luar Jam Buka",
-                ]
-                chart1 = create_vertical_bar_chart(
-                    time_data,
-                    "Waktu Kunjungan",
-                    "Jumlah_Transaksi",
-                    "Waktu Kunjungan",
-                    "Jumlah Transaksi",
-                    x_type="O",
-                    sort_order=sort_order_time,
-                )
-                st.altair_chart(chart1, use_container_width=True)
-            with t_col2:
-                st.markdown("##### Berdasarkan Total Penjualan")
-                chart2 = create_vertical_bar_chart(
-                    time_data,
-                    "Waktu Kunjungan",
-                    "Total_Penjualan",
-                    "Waktu Kunjungan",
-                    "Total Penjualan (Rp)",
-                    x_type="O",
-                    sort_order=sort_order_time,
-                )
-                st.altair_chart(chart2, use_container_width=True)
+                t_col1, t_col2 = st.columns(2)
+                with t_col1:
+                    st.markdown("##### Berdasarkan Jumlah Transaksi")
+                    # Tentukan urutan manual untuk grafik
+                    sort_order_time = [
+                        "Breakfast/Brunch (10-12)",
+                        "Lunch (12-17)",
+                        "Dinner (17-22)",
+                        "Luar Jam Buka",
+                    ]
+                    chart1 = create_vertical_bar_chart(
+                        time_data,
+                        "Waktu Kunjungan",
+                        "Jumlah_Transaksi",
+                        "Waktu Kunjungan",
+                        "Jumlah Transaksi",
+                        x_type="O",
+                        sort_order=sort_order_time,
+                    )
+                    st.altair_chart(chart1, use_container_width=True)
+                with t_col2:
+                    st.markdown("##### Berdasarkan Total Penjualan")
+                    chart2 = create_vertical_bar_chart(
+                        time_data,
+                        "Waktu Kunjungan",
+                        "Total_Penjualan",
+                        "Waktu Kunjungan",
+                        "Total Penjualan (Rp)",
+                        x_type="O",
+                        sort_order=sort_order_time,
+                    )
+                    st.altair_chart(chart2, use_container_width=True)
 
-            st.dataframe(
-                time_data.set_index("Waktu Kunjungan").style.format(
-                    {
-                        "Total_Penjualan": format_rupiah,
-                        "Jumlah_Transaksi": format_angka_bulat,
-                    }
+                st.dataframe(
+                    time_data.set_index("Waktu Kunjungan").style.format(
+                        {
+                            "Total_Penjualan": format_rupiah,
+                            "Jumlah_Transaksi": format_angka_bulat,
+                        }
+                    )
                 )
-            )
 
             st.markdown("---")
 
             # 2. Analisis Waiter
-            st.subheader("🏆 Performa Waiter Teratas (Top 10)")
-            # Gunakan data yang sudah difilter
-            waiter_data = get_waiter_performance(filtered_waiter)
+            # PERUBAHAN 12: Menambahkan st.expander untuk Analisis Waiter
+            with st.expander("🏆 Performa Waiter Teratas (Top 10)", expanded=True):
+                st.subheader("🏆 Performa Waiter Teratas (Top 10)")
+                # Gunakan data yang sudah difilter
+                waiter_data = get_waiter_performance(filtered_waiter)
 
-            chart_waiter = create_horizontal_bar_chart(
-                waiter_data,
-                "Total_Penjualan",
-                "Waiter",
-                "Total Penjualan (Rp)",
-                "Waiter",
-            )
-            st.altair_chart(chart_waiter, use_container_width=True)
-
-            st.dataframe(
-                waiter_data.set_index("Waiter").style.format(
-                    {
-                        "Total_Penjualan": format_rupiah,
-                        "Jumlah_Transaksi": format_angka_bulat,
-                    }
+                chart_waiter = create_horizontal_bar_chart(
+                    waiter_data,
+                    "Total_Penjualan",
+                    "Waiter",
+                    "Total Penjualan (Rp)",
+                    "Waiter",
                 )
-            )
+                st.altair_chart(chart_waiter, use_container_width=True)
+
+                st.dataframe(
+                    waiter_data.set_index("Waiter").style.format(
+                        {
+                            "Total_Penjualan": format_rupiah,
+                            "Jumlah_Transaksi": format_angka_bulat,
+                        }
+                    )
+                )
 
         elif filtered_waiter is not None and filtered_waiter.empty:
             st.warning(
@@ -1295,3 +1398,22 @@ with tab3:
         st.info(
             "Silakan upload file Laporan Rekapitulasi Detail (file ke-3) di sidebar untuk melihat analisis waiter."
         )
+
+# --- BAGIAN BARU: FOOTER TETAP (STICKY FOOTER) ---
+st.markdown(
+    """
+    <div id="custom-footer">
+        <div class="copyright">
+            © Copyright Roni Hidayat Data Driven Speacialist Food and Beverage - 2025
+        </div>
+        <div class="links">
+            <a href="#">Hubungi Kami</a>
+            <a href="#">Kebijakan Privasi</a>
+            <a href="#">Tentang Kami</a>
+            <a href="#">Kerjasama</a>
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+# --- AKHIR FOOTER ---
