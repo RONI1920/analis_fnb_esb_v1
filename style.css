@@ -17,19 +17,11 @@
   background-color: #0e1117; /* Background Gelap Utama */
   color: #fafafa; /* Teks Putih */
   animation: fadeIn 0.8s ease-out;
-  padding-bottom: 50px; /* PENTING: Tambahkan padding bawah agar konten tidak tertutup footer */
 }
 
 /* Konten Expander (Muncul dengan halus saat dibuka) */
 .streamlit-expanderContent {
   animation: fadeIn 0.5s ease-out;
-}
-
-/* Judul dan Subjudul di Konten Utama (Muncul lebih dulu) */
-.stApp h1,
-.stApp h2,
-.stApp h3 {
-  animation: fadeIn 0.6s ease-out forwards;
 }
 
 /* ------------------------------------- */
@@ -60,27 +52,40 @@
 /* 3. WIDGET & KOMPONEN */
 /* ------------------------------------- */
 
-/* Sidebar Header Text (RONI HIDAYAT / DATA DRIVEN SPECIALYST FNB) */
+/* Sidebar Header Text (DATA DRIVEN / SPECIALYST FNB) */
 [data-testid="stSidebar"] h1 {
-  /* Gaya untuk 'DATA DRIVEN' */
   margin: 0 !important;
   padding: 0 !important;
   line-height: 1;
   font-size: 3.5rem;
+  text-align: center;
 }
 [data-testid="stSidebar"] h2 {
-  /* Gaya untuk 'SPECIALYST FNB' */
   margin: 0 !important;
   padding: 0 !important;
   line-height: 1;
   font-size: 2.5rem;
+  text-align: center;
 }
 
-/* Header Upload Data (st.header("Upload Data") yang tampil di sidebar) */
-/* PERBAIKAN AKHIR: Menargetkan elemen H3 Streamlit di sidebar secara spesifik */
-[data-testid="stSidebar"] [data-testid="stText"] h2 {
+/* Menghapus margin/padding bawaan dari container title/header */
+[data-testid="stSidebar"] [data-testid="stTitleContainer"] {
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+[data-testid="stSidebar"] [data-testid="stHeaderContainer"] {
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+/* Aturan konsolidasi untuk 'Upload Data' (st.header) */
+[data-testid="stSidebar"] h3 {
   font-size: 1.15rem !important;
-  color: #fafafa !important; /* Mengubah warna teks menjadi putih */
+  color: #fafafa !important;
   margin-top: 25px !important;
   margin-bottom: 10px !important;
   padding-bottom: 0 !important;
@@ -92,40 +97,27 @@
   color: #fafafa !important;
 }
 
-/* Menargetkan teks st.header/st.subheader di sidebar (jika h3 tidak bekerja) */
-[data-testid="stSidebar"] .stText > h3,
-[data-testid="stSidebar"] .stText h3 {
-  font-size: 1.15rem !important;
-  color: #fafafa !important;
-}
-
 .stFileUploader {
-  margin-top: 15px; /* Jarak antar file uploader */
+  margin-top: 15px;
   margin-bottom: 15px;
 }
 
-/* Kotak Metrik (KPI) - dengan transisi hover */
+/* Kotak Metrik (KPI) */
 [data-testid="stMetric"] {
   background-color: #1e1e1e;
   border: 1px solid #333;
   border-radius: 10px;
   padding: 20px;
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-  transition: all 0.3s ease-in-out; /* Transisi untuk animasi */
+  transition: all 0.3s ease-in-out;
 }
-
-/* Efek Hover untuk Kotak Metrik */
 [data-testid="stMetric"]:hover {
-  transform: translateY(-5px); /* Sedikit terangkat */
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5); /* Bayangan lebih besar */
+  transform: translateY(-5px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5);
 }
-
-/* Label Metrik */
 [data-testid="stMetricLabel"] {
   color: #aaaaaa;
 }
-
-/* Angka Metrik */
 [data-testid="stMetricValue"] {
   color: #fafafa;
 }
@@ -142,7 +134,7 @@
 /* 4. TAB NAVIGATION & INTERAKSI */
 /* ------------------------------------- */
 
-/* Kontainer Grafik - dengan transisi hover */
+/* Kontainer Grafik */
 .stAltairChart {
   background-color: #1e1e1e;
   padding: 10px;
@@ -155,8 +147,7 @@
   box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
 }
 
-/* Tombol Tab (Memperbesar Font) - dengan transisi hover */
-/* Font size dipertahankan di app.py menggunakan inline CSS untuk spesifisitas */
+/* Tombol Tab */
 .stTabs [data-baseweb="tab-list"] button {
   padding: 10px 15px;
   transition: all 0.2s ease-in-out;
@@ -197,51 +188,70 @@
 }
 
 /* ------------------------------------- */
-/* 6. FOOTER TETAP (STICKY FOOTER) */
+/* 6. FOOTER TETAP (STICKY FOOTER) - VERSI LEBAR PENUH */
 /* ------------------------------------- */
 .stApp footer {
   display: none !important; /* Sembunyikan footer Streamlit bawaan */
 }
 
 #custom-footer {
+  /* --- INI ADALAH PERUBAHAN UTAMA --- */
   position: fixed; /* Membuat footer menempel di layar */
-  bottom: 0;
-  left: 0;
-  width: 100%;
-  background-color: #1e1e1e; /* Warna latar belakang sama dengan sidebar/metrik */
-  color: #fafafa; /* UBAH WARNA TEKS FOOTER MENJADI PUTIH */
-  padding: 15px 30px; /* TAMBAH PADDING UNTUK LEBAR YANG LEBIH RAPI */
+  bottom: 0; /* Menempel di bagian bawah */
+  left: 0; /* Menempel di kiri (lebar penuh) */
+  width: 100%; /* Lebar 100% dari layar */
+
+  /* Gaya visual */
+  background-color: #1e1e1e;
+  color: #fafafa;
+  padding: 15px 30px;
   border-top: 1px solid #333;
   box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.5);
   z-index: 100; /* Pastikan ia berada di atas elemen lain */
+
+  /* Tata letak */
   display: flex;
-  justify-content: space-between; /* Memisahkan konten kiri dan kanan */
+  justify-content: space-between;
   align-items: center;
 }
 
 #custom-footer a {
-  color: #00a3ff; /* Warna tautan biru */
+  color: #00a3ff;
   text-decoration: none;
   padding: 0 10px;
   transition: color 0.2s;
 }
 
 #custom-footer a:hover {
-  color: #fafafa; /* Warna putih saat di-hover */
+  color: #fafafa;
 }
 
 #custom-footer .copyright {
   font-size: 0.85rem;
 }
 
+/* Perbaikan agar link rapi saat turun baris */
 #custom-footer .links {
   font-size: 0.85rem;
+  display: flex;
+  flex-wrap: wrap; /* Izinkan link turun baris */
+  justify-content: flex-end; /* Ratakan ke kanan */
+  gap: 0 10px; /* Jarak antar link */
 }
 
 #custom-footer .links a:first-child {
-  padding-left: 0; /* Hapus padding kiri pada tautan pertama */
+  padding-left: 0;
 }
 
 #custom-footer .links a:last-child {
-  padding-right: 0; /* Hapus padding kanan pada tautan terakhir */
+  padding-right: 0;
+}
+
+/* ------------------------------------- */
+/* 7. PADDING HALAMAN (PENTING UNTUK STICKY FOOTER) */
+/* ------------------------------------- */
+/* Ini memberi ruang di bawah agar konten terakhir
+   tidak tertutup oleh footer yang menempel */
+.stApp > div:first-child {
+  padding-bottom: 70px; /* Beri ruang 70px di bawah */
 }

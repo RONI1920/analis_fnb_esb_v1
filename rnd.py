@@ -453,28 +453,38 @@ def get_waiter_performance(df):
     return waiter_perf.nlargest(10, "Total_Penjualan")
 
 
-# --- FUNGSI DIPERBARUI (PADDING & NO-INTERACTIVE) ---
+# --- FUNGSI DIPERBARUI (Sumbu X di Atas, Label Rapi) ---
 def create_horizontal_bar_chart(data, x_col, y_col, x_title, y_title, sort_order="-x"):
-    """Membuat grafik batang horizontal Altair."""
+    """Membuat grafik batang horizontal Altair (Sumbu X di atas, label rapi)."""
     chart = (
         alt.Chart(data)
         .mark_bar()
         .encode(
-            x=alt.X(f"{x_col}:Q", title=x_title, axis=alt.Axis(format="~s")),
-            y=alt.Y(f"{y_col}:N", title=y_title, sort=sort_order),
+            # --- PERUBAHAN DI SINI ---
+            x=alt.X(
+                f"{x_col}:Q", title=x_title, axis=alt.Axis(orient="top", format="~s")
+            ),  # Pindah Sumbu X ke ATAS
+            y=alt.Y(
+                f"{y_col}:N",
+                title=y_title,
+                sort=sort_order,
+                axis=alt.Axis(labelLimit=300),  # Batasi label di 300px, sisanya '...'
+            ),
+            # --- AKHIR PERUBAHAN ---
             color=alt.Color(f"{y_col}:N", title=y_title, legend=None),
             tooltip=[
-                alt.Tooltip(y_col, title=y_title),
+                alt.Tooltip(
+                    y_col, title=y_title
+                ),  # Tooltip tetap menunjukkan nama lengkap
                 alt.Tooltip(x_col, title=x_title, format=",.0f"),
             ],
         )
-        .properties(padding={"top": 20})  # <-- PERUBAHAN DI SINI
-        # .interactive() Dihapus
+        .properties(padding={"top": 5})  # Padding atas bisa dikurangi sedikit
     )
     return chart
 
 
-# --- FUNGSI DIPERBARUI (PADDING & NO-INTERACTIVE) ---
+# --- FUNGSI DIPERBARUI (Padding, No-interactive) ---
 def create_vertical_bar_chart(
     data, x_col, y_col, x_title, y_title, x_type="N", sort_order=None
 ):
@@ -491,9 +501,9 @@ def create_vertical_bar_chart(
                 alt.Tooltip(y_col, title=y_title, format=",.0f"),
             ],
         )
-        .properties(padding={"top": 20})  # <-- PERUBAHAN DI SINI
-        # .interactive() Dihapus
+        .properties(padding={"top": 20})  # <-- Jarak atas ditambahkan
     )
+    # .interactive() Dihapus
     return chart
 
 
@@ -877,12 +887,11 @@ def build_global_filters(data_gmv, data_cogs, data_waiter):
     return filtered_gmv, filtered_cogs, filtered_waiter
 
 
-# --- FUNGSI DIPERBARUI (HYBRID, PADDING, & NO-INTERACTIVE) ---
-# --- FUNGSI DIPERBARUI (FIX VCONCAT PADDING ERROR) ---
+# --- FUNGSI DIPERBARUI (Sumbu X di Atas + Label Limit Rapi) ---
 def build_tab1_sales(filtered_gmv):
     """
     Menggambar semua elemen untuk Tab 1.
-    VERSI HYBRID: Tata letak baru + Drill-down interaktif.
+    VERSI HYBRID: Tata letak baru + Drill-down + Sumbu X di atas.
     """
     if filtered_gmv is not None:
         if not filtered_gmv.empty:
@@ -938,17 +947,16 @@ def build_tab1_sales(filtered_gmv):
             (
                 top_selling,
                 top_grossing,
-                top_sell_cat,  # Data untuk grafik statis (jika diperlukan)
-                top_gross_cat,  # Data untuk grafik statis (jika diperlukan)
+                top_sell_cat,
+                top_gross_cat,
                 bottom_selling,
                 bottom_grossing,
-                menu_sales_cat_df,  # Data BARU untuk drill-down
+                menu_sales_cat_df,
             ) = get_menu_performance(filtered_gmv)
 
             # === 2. URUTAN BARU 1: KATEGORI MENU (INTERAKTIF) ===
             st.header("🍽️ Analisis Menu & Kategori")
 
-            # Cek apakah kolom kategori ada dan datanya tidak kosong
             if "Menu Category" in filtered_gmv.columns and not menu_sales_cat_df.empty:
                 with st.expander(
                     "🍰 Analisis Kategori Menu Interaktif (Klik untuk Detail)",
@@ -1026,22 +1034,27 @@ def build_tab1_sales(filtered_gmv):
                     num_bars_kategori = len(data_untuk_grafik_atas)
                     ideal_height = num_bars_kategori * bar_height_px
 
-                    # Logika tinggi grafik
-                    if show_all_categories and ideal_height > max_height_before_scroll:
-                        chart_height_kategori = max_height_before_scroll
-                    else:
-                        chart_height_kategori = max(ideal_height, min_height_px)
-                        if chart_height_kategori > max_height_before_scroll:
-                            chart_height_kategori = max_height_before_scroll
+                    chart_height_kategori = min(
+                        max(ideal_height, min_height_px), max_height_before_scroll
+                    )
 
                     chart_kategori = (
                         alt.Chart(data_untuk_grafik_atas)
                         .mark_bar()
                         .encode(
-                            x=alt.X("Qty:Q", title="Total Kuantiti Terjual"),
-                            y=alt.Y(
-                                "Menu Category:N", title="Kategori Menu", sort=None
+                            # --- PERUBAHAN DI SINI ---
+                            x=alt.X(
+                                "Qty:Q",
+                                title="Total Kuantiti Terjual",
+                                axis=alt.Axis(orient="top"),
                             ),
+                            y=alt.Y(
+                                "Menu Category:N",
+                                title="Kategori Menu",
+                                sort="-x",
+                                axis=alt.Axis(labelLimit=300),  # Batasi label
+                            ),
+                            # --- AKHIR PERUBAHAN ---
                             tooltip=["Menu Category", "Qty"],
                             color=alt.condition(
                                 selection_kategori,
@@ -1053,40 +1066,53 @@ def build_tab1_sales(filtered_gmv):
                         .properties(
                             title=title_grafik_atas,
                             height=chart_height_kategori,
-                            # padding={"top": 20}  # <-- PADDING DIHAPUS DARI SINI
                         )
                     )
 
                     # 8. Grafik Bawah (Detail)
+                    num_bars_detail = len(data_menu_item["Menu"].unique())
+                    ideal_height_detail = num_bars_detail * bar_height_px
+                    chart_height_detail = min(
+                        max(ideal_height_detail, min_height_px),
+                        max_height_before_scroll,
+                    )
+
                     chart_detail = (
                         alt.Chart(data_menu_item)
                         .mark_bar()
                         .encode(
-                            x=alt.X("Qty:Q", title="Total Kuantiti Terjual"),
-                            y=alt.Y("Menu:N", title="Menu Item", sort="-x"),
+                            # --- PERUBAHAN DI SINI ---
+                            x=alt.X(
+                                "Qty:Q",
+                                title="Total Kuantiti Terjual",
+                                axis=alt.Axis(orient="top"),
+                            ),
+                            y=alt.Y(
+                                "Menu:N",
+                                title="Menu Item",
+                                sort="-x",
+                                axis=alt.Axis(labelLimit=300),  # Batasi label
+                            ),
+                            # --- AKHIR PERUBAHAN ---
                             tooltip=["Menu Category", "Menu", "Qty"],
                         )
                         .transform_filter(selection_kategori)
                         .properties(
                             title="Detail Penjualan per Menu Item (Berdasarkan Kategori Dipilih)",
-                            height=300,
-                            # padding={"top": 20} # <-- PADDING DIHAPUS DARI SINI
+                            height=chart_height_detail,
                         )
                     )
 
                     # 9. Gabungkan dan Tampilkan
                     combined_chart = alt.vconcat(
-                        chart_kategori,
-                        chart_detail,
-                        spacing=40,  # <-- PERUBAHAN: 'padding' diganti 'spacing' di VConcat
-                    )
+                        chart_kategori, chart_detail, spacing=40
+                    ).resolve_scale(y="independent")
+
                     st.altair_chart(combined_chart, use_container_width=True)
 
             elif "Menu Category" in filtered_gmv.columns:
-                # Kasus: Kolom ada, tapi data kosong (mungkin terfilter habis)
                 st.warning("Data kategori menu tidak ditemukan untuk periode ini.")
             else:
-                # Kasus: Kolom 'Menu Category' tidak ada di file
                 st.warning(
                     "Kolom 'Menu Category' tidak ditemukan di File 1 untuk analisis interaktif."
                 )
@@ -1196,42 +1222,43 @@ def build_tab1_sales(filtered_gmv):
                     )
                     st.altair_chart(chart, use_container_width=True)
 
-            # === 6. URUTAN BARU 5: ANALISIS TRANSAKSI ===
+            # === 6. URUTAN BARU 5: ANALISIS TRANSAKSI (TATA LETAK VERTIKAL) ===
             with st.expander(
                 "💳 Analisis Transaksi (Pembayaran & Kunjungan)", expanded=True
             ):
-                col7, col8 = st.columns(2)
-                if "Payment Method" in filtered_gmv.columns:
-                    with col7:
-                        st.subheader("💳 Penjualan per Metode Pembayaran")
-                        payment_data = get_payment_analysis(filtered_gmv)
-                        chart = create_horizontal_bar_chart(
-                            payment_data,
-                            "Total_Penjualan",
-                            "Cleaned_Payment",
-                            "Total Penjualan (Rp)",
-                            "Metode Pembayaran",
-                        )
-                        st.altair_chart(chart, use_container_width=True)
-                else:
-                    with col7:
-                        st.warning("Kolom 'Payment Method' tidak ditemukan di File 1.")
 
-                if "Visit Purpose" in filtered_gmv.columns:
-                    with col8:
-                        st.subheader("🏪 Penjualan per Tipe Kunjungan")
-                        visit_data = get_visit_purpose_analysis(filtered_gmv)
-                        chart = create_horizontal_bar_chart(
-                            visit_data,
-                            "Total After Bill Discount",
-                            "Visit Purpose",
-                            "Total Penjualan (Rp)",
-                            "Tipe Kunjungan",
-                        )
-                        st.altair_chart(chart, use_container_width=True)
+                # --- Bagian Metode Pembayaran ---
+                if "Payment Method" in filtered_gmv.columns:
+                    st.subheader("💳 Penjualan per Metode Pembayaran")
+                    payment_data = get_payment_analysis(filtered_gmv)
+                    chart = create_horizontal_bar_chart(
+                        payment_data,
+                        "Total_Penjualan",
+                        "Cleaned_Payment",
+                        "Total Penjualan (Rp)",
+                        "Metode Pembayaran",
+                    )
+                    st.altair_chart(chart, use_container_width=True)
                 else:
-                    with col8:
-                        st.warning("Kolom 'Visit Purpose' tidak ditemukan di File 1.")
+                    st.warning("Kolom 'Payment Method' tidak ditemukan di File 1.")
+
+                # --- Pemisah visual ditambahkan ---
+                st.markdown("---")
+
+                # --- Bagian Tipe Kunjungan ---
+                if "Visit Purpose" in filtered_gmv.columns:
+                    st.subheader("🏪 Penjualan per Tipe Kunjungan")
+                    visit_data = get_visit_purpose_analysis(filtered_gmv)
+                    chart = create_horizontal_bar_chart(
+                        visit_data,
+                        "Total After Bill Discount",
+                        "Visit Purpose",
+                        "Total Penjualan (Rp)",
+                        "Tipe Kunjungan",
+                    )
+                    st.altair_chart(chart, use_container_width=True)
+                else:
+                    st.warning("Kolom 'Visit Purpose' tidak ditemukan di File 1.")
 
         elif filtered_gmv is not None and filtered_gmv.empty:
             st.warning(
@@ -2047,7 +2074,7 @@ def build_tab5_forecast(data_gmv):
 # #################################################################
 
 
-# --- FUNGSI DIPERBARUI (PADDING & NO-INTERACTIVE) ---
+# --- FUNGSI DIPERBARUI (Padding, No-interactive) ---
 def build_tab6_target(data_gmv):
     """Menggambar Tab 6 (Pencapaian Target) dengan perbandingan ramalan Prophet."""
     st.header("🎯 Pencapaian Target & Proyeksi (Dinamis)")
@@ -2434,7 +2461,7 @@ def build_tab6_target(data_gmv):
                     "Tipe",
                 ],
             )
-            .properties(padding={"top": 20})  # <-- PERUBAHAN DI SINI
+            .properties(padding={"top": 20})  # <-- Jarak atas ditambahkan
         )
         # .interactive() Dihapus
         st.altair_chart(line_chart, use_container_width=True)
@@ -2486,7 +2513,7 @@ def build_tab6_target(data_gmv):
                 x=alt.X("Nama Hari:N", title="Hari", sort=day_sort_order),
                 y=alt.Y("Jumlah:Q", title="Penjualan (Rp)"),
             )
-            .properties(padding={"top": 20})  # <-- PERUBAHAN DI SINI
+            .properties(padding={"top": 20})  # <-- Jarak atas ditambahkan
         )
 
         bar_chart = (
@@ -2578,9 +2605,8 @@ def main():
         "🧑‍🍳 Analisis SDM & Waktu",
         "⚖️ Analisis Perbandingan Periodik",
         "🔮 Peramalan Tren",
-        "🎯 Target & Proyeksi",  # <-- PERUBAHAN 1: Tambah judul Tab 6
+        "🎯 Target & Proyeksi",
     ]
-    # <-- PERUBAHAN 2: Tambah 'tab6'
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(tab_titles)
 
     # 5. Isi setiap Tab dengan data yang relevan
@@ -2601,7 +2627,6 @@ def main():
         # Tab 5 menggunakan data *asli* (bukan filtered) untuk peramalan tren
         build_tab5_forecast(data_gmv)
 
-    # <-- PERUBAHAN 3: Tambah blok 'with tab6'
     with tab6:
         # Tab 6 juga menggunakan data asli (bukan filtered)
         build_tab6_target(data_gmv)
@@ -2609,35 +2634,29 @@ def main():
     # 6. Gambar Footer
     build_footer()
 
-    # --- PERUBAHAN DI SINI: SEMUA NOTIFIKASI HILANG SETELAH 5 DETIK ---
+    # --- SEMUA NOTIFIKASI HILANG SETELAH 5 DETIK ---
     st.markdown(
         """
         <script>
         function hideAllNotices() {
-            // PERUBAHAN: Menghapus :not([data-testid="stError"]) agar SEMUA notifikasi ikut hilang
             const notices = document.querySelectorAll(
                 '.stAlert[data-baseweb="alert"]:not(.fading-out)'
             );
 
             notices.forEach(function(notice) {
-                // Tandai sebagai 'sedang diproses' agar tidak dipilih lagi
                 notice.classList.add('fading-out');
 
-                // PERUBAHAN: Waktu tunggu diubah menjadi 5000ms (5 detik)
                 setTimeout(() => {
-                    // Mulai transisi fade-out
                     notice.style.transition = 'opacity 0.5s ease-out';
                     notice.style.opacity = '0';
                     
-                    // Setelah transisi selesai, sembunyikan elemen
                     setTimeout(() => {
                         notice.style.display = 'none';
-                    }, 500); // 500ms = durasi transisi
-                }, 5000); // <-- UBAH JADI 5000 (5 DETIK)
+                    }, 500);
+                }, 5000); 
             });
         }
 
-        // Jalankan fungsi ini setiap 1 detik untuk menangkap notifikasi baru
         setInterval(hideAllNotices, 1000);
         </script>
         """,
