@@ -889,9 +889,13 @@ def load_data_ulasan(uploaded_file, use_db=False):
 
     # Membersihkan kolom Rating (cth: "5 bintang" -> 5)
     # Menggunakan regex untuk mengekstrak angka pertama yang ditemukan
+
+    # --- PERBAIKAN DARI ERROR SEBELUMNYA ---
+    # Menggunakan .str.extract()
     df["Rating_Clean"] = (
-        df["Rating"].astype(str).str_extract(r"(\d+)").fillna(0).astype(int)
+        df["Rating"].astype(str).str.extract(r"(\d+)").fillna(0).astype(int)
     )
+    # --- BATAS PERBAIKAN ---
 
     # Menghapus baris yang tidak memiliki ulasan atau rating bersih
     df.dropna(subset=["Ulasan"], inplace=True)
@@ -1000,7 +1004,7 @@ def analyze_purchase_data(df):
     Sesuai permintaan: Menjumlahkan SEMUA kategori sebagai 'Total Biaya Pembelian'.
     """
     if df is None or df.empty:
-        return 0, pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+        return 0, pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
     # PENTING: Hanya analisis item yang memiliki biaya tercatat (Total > 0)
     # Ini akan mengabaikan item dari "Santhai HO LINK" atau "Pasar Cash" yang bernilai 0
@@ -2863,14 +2867,17 @@ def build_tab6_target(data_gmv):
 
         plot_df_2 = pd.concat([avg_sales_by_day, target_per_hari_df])
 
+        # #################################################################
+        # --- PERBAIKAN 1: Hapus .properties() dari base chart ---
         base = (
-            alt.Chart(plot_df_2)
-            .encode(
+            alt.Chart(plot_df_2).encode(
                 x=alt.X("Nama Hari:N", title="Hari", sort=day_sort_order),
                 y=alt.Y("Jumlah:Q", title="Penjualan (Rp)"),
             )
-            .properties(padding={"top": 20})
+            # .properties(padding={"top": 20}) <-- DIHAPUS DARI SINI
         )
+        # --- BATAS PERBAIKAN 1 ---
+        # #################################################################
 
         bar_chart = (
             base.transform_filter(alt.datum["Tipe"] == "1 - Rata-rata Aktual")
@@ -2904,7 +2911,18 @@ def build_tab6_target(data_gmv):
                 "Grafik ini menampilkan performa rata-rata Anda per hari (Bars) untuk bulan yang telah selesai."
             )
 
-        st.altair_chart((bar_chart + line_chart_target), use_container_width=True)
+        # #################################################################
+        # --- PERBAIKAN 2: Gabungkan dulu, baru tambahkan .properties() ---
+        combined_chart = bar_chart + line_chart_target
+
+        st.altair_chart(
+            combined_chart.properties(
+                padding={"top": 20}
+            ),  # <-- PADDING DITAMBAHKAN DI SINI
+            use_container_width=True,
+        )
+        # --- BATAS PERBAIKAN 2 ---
+        # #################################################################
 
     except Exception as e:
         st.error(f"Gagal membuat grafik tren harian: {e}")
