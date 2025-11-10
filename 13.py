@@ -195,6 +195,45 @@ def clean_payment_method(method_str):
     return "Lainnya"
 
 
+@st.cache_data(show_spinner=False)  # Tambahkan ini untuk cache
+def get_prophet_projection(prophet_data, sisa_hari):
+    """
+    Melatih model Prophet yang di-cache dan mengembalikan nilai ramalan.
+    Fungsi ini hanya akan berjalan jika input (data & sisa_hari) berubah.
+    """
+    try:
+        # Kita tambahkan pengecekan data di sini
+        if len(prophet_data) < 7:
+            st.warning("Data bulan ini < 7 hari, ramalan Prophet tidak akurat.")
+            return None  # Tidak cukup data
+
+        # Tampilkan spinner HANYA saat fungsi ini benar-benar berjalan
+        with st.spinner("Menjalankan model ramalan Prophet (pertama kali)..."):
+            model_prophet = Prophet(
+                weekly_seasonality=True,
+                daily_seasonality=False,
+                changepoint_prior_scale=0.1,
+            )
+            model_prophet.fit(prophet_data)
+
+            future_df_prophet = model_prophet.make_future_dataframe(periods=sisa_hari)
+            forecast_df_prophet = model_prophet.predict(future_df_prophet)
+
+            # Kembalikan hanya total ramalan untuk sisa hari
+            # Pastikan sisa_hari > 0
+            if sisa_hari > 0:
+                ramalan_sisa_hari = forecast_df_prophet.iloc[-sisa_hari:]["yhat"].sum()
+            else:
+                ramalan_sisa_hari = 0
+
+            return ramalan_sisa_hari
+
+    except Exception as e:
+        st.error(f"Gagal menjalankan ramalan Prophet: {e}", icon="🤖")
+        return None
+
+
+@st.cache_data
 def calculate_sales_kpi(df):
     """Menghitung KPI Penjualan Utama."""
     if df is None or df.empty:
@@ -235,6 +274,7 @@ def calculate_sales_kpi(df):
     }
 
 
+@st.cache_data
 def get_payment_analysis(df):
     """Menganalisis penjualan berdasarkan metode pembayaran."""
     bill_data = (
@@ -256,6 +296,7 @@ def get_payment_analysis(df):
     return payment_analysis.reset_index()
 
 
+@st.cache_data
 def get_visit_purpose_analysis(df):
     """Menganalisis penjualan berdasarkan tujuan kunjungan."""
     bill_data = (
@@ -279,6 +320,7 @@ def get_visit_purpose_analysis(df):
     )
 
 
+@st.cache_data
 def get_menu_performance(df):
     """
     Menganalisis performa menu dan kategori.
@@ -366,6 +408,7 @@ def get_menu_performance(df):
     )
 
 
+@st.cache_data
 def get_operational_kpi(df):
     """Menghitung KPI Operasional (Jam Sibuk, Hari Sibuk, Durasi)."""
     avg_dining_time = 0.0
@@ -416,6 +459,7 @@ def get_operational_kpi(df):
 
 
 @st.cache_data
+@st.cache_data
 def analyze_profit(df_cogs):
     """Menganalisis profitabilitas HANYA dari file COGS."""
     if df_cogs is None or df_cogs.empty:
@@ -433,6 +477,38 @@ def analyze_profit(df_cogs):
         return pd.DataFrame(columns=final_cols)
 
     profit_df = df_cogs.copy()
+
+    # #############################################################
+    # --- BLOK FILTER YANG DIPERBARUI (LEBIH KUAT) ---
+    # #############################################################
+
+    # Definisikan SEMUA kata kunci yang tidak diinginkan dalam satu regex
+    # r"ADD[ -]?ON" -> akan menangkap "ADD ON", "ADD-ON", dan "ADDON"
+    filter_regex_all = r"ADDITIONAL|ADD[ -]?ON|New Add-ons|Level"
+
+    # Filter 1: Berdasarkan 'Menu Category' (jika kolomnya ada)
+    # Ini akan membuang "New Add-ons Ocha" dari KATEGORI
+    if "Menu Category" in profit_df.columns:
+        profit_df = profit_df[
+            ~profit_df["Menu Category"].str.contains(
+                filter_regex_all, na=False, case=False, regex=True
+            )
+        ]
+
+    # Filter 2: Berdasarkan 'Menu' (kolom ini pasti ada)
+    # Ini akan membuang item dari NAMA MENU
+    if "Menu" in profit_df.columns:
+        profit_df = profit_df[
+            ~profit_df["Menu"].str.contains(
+                filter_regex_all, na=False, case=False, regex=True
+            )
+        ]
+
+    # #############################################################
+    # --- BATAS BLOK FILTER ---
+    # #############################################################
+
+    # Sisa fungsi berjalan seperti biasa, tapi di data yang sudah bersih
     profit_df["Margin (Rp)"] = profit_df["Harga Jual"] - profit_df["COGS"]
     profit_df["Total Revenue (Rp)"] = profit_df["Total"]
     profit_df["Total COGS (Rp)"] = profit_df["COGS"] * profit_df["Qty"]
@@ -496,6 +572,7 @@ def analyze_profit(df_cogs):
     return final_df[final_cols].sort_values(by="Total Profit (Rp)", ascending=False)
 
 
+@st.cache_data
 def get_peak_time_analysis(df):
     """Menganalisis transaksi berdasarkan waktu (Breakfast, Lunch, Dinner)."""
     if df is None or df.empty:
@@ -548,6 +625,7 @@ def get_peak_time_analysis(df):
     return time_analysis
 
 
+@st.cache_data
 def get_waiter_performance(df):
     """Menganalisis performa waiter (Top 10)."""
     if df is None or df.empty:
@@ -739,6 +817,93 @@ def calculate_delta(value_A, value_B, formatter_func, higher_is_better=True):
     return delta_abs_formatted, delta_pct_str, delta_color
 
 
+# #################################################################
+# --- FUNGSI BARU UNTUK INSIGHT DI TAB 1 ---
+# #################################################################
+@st.cache_data(show_spinner=False)
+def generate_gmv_insights(
+    kpi, top_selling, bottom_selling, peak_hours, peak_days_of_week
+):
+    """
+    Menganalisis data GMV yang sudah diproses dan menghasilkan insight
+    dalam bahasa alami.
+    """
+    insights = []
+
+    # 1. Insight Menu Paling Laris (dari data top_selling)
+    try:
+        if not top_selling.empty:
+            top_item = top_selling.iloc[0]["Menu"]
+            top_qty = top_selling.iloc[0]["Qty"]
+            insights.append(
+                f"**🚀 Menu Paling Laris:** `{top_item}` adalah bintang utama Anda, "
+                f"terjual sebanyak **{top_qty:,.0f} porsi** pada periode ini."
+            )
+    except Exception as e:
+        print(f"Gagal generate insight top_selling: {e}")
+
+    # 2. Insight Menu Jarang Laku (dari data bottom_selling)
+    try:
+        if not bottom_selling.empty:
+            bottom_item = bottom_selling.iloc[0]["Menu"]
+            bottom_qty = bottom_selling.iloc[0]["Qty"]
+            insights.append(
+                f"**📉 Menu Jarang Laku:** `{bottom_item}` perlu dievaluasi. "
+                f"Menu ini hanya terjual **{bottom_qty:,.0f} porsi**."
+            )
+    except Exception as e:
+        print(f"Gagal generate insight bottom_selling: {e}")
+
+    # 3. Insight Hari Paling Ramai (dari data peak_days_of_week)
+    try:
+        if not peak_days_of_week.empty:
+            peak_day_data = peak_days_of_week.sort_values(
+                by="Bill Number", ascending=False
+            ).iloc[0]
+            peak_day = peak_day_data["Day Name"]
+            peak_day_trx = peak_day_data["Bill Number"]
+            insights.append(
+                f"**🗓️ Hari Paling Ramai:** **{peak_day}** adalah hari tersibuk Anda "
+                f"dengan total **{peak_day_trx:,.0f} transaksi**."
+            )
+    except Exception as e:
+        print(f"Gagal generate insight peak_days: {e}")
+
+    # 4. Insight Jam Paling Ramai (dari data peak_hours)
+    try:
+        if not peak_hours.empty:
+            peak_hour_data = peak_hours.sort_values(
+                by="Bill Number", ascending=False
+            ).iloc[0]
+            peak_hour = peak_hour_data["Hour"]
+            peak_hour_trx = peak_hour_data["Bill Number"]
+            insights.append(
+                f"**🕒 Jam Paling Ramai:** Puncak kunjungan terjadi pada pukul **{peak_hour}:00**, "
+                f"mencatat **{peak_hour_trx:,.0f} transaksi**."
+            )
+    except Exception as e:
+        print(f"Gagal generate insight peak_hours: {e}")
+
+    # 5. Insight Rata-rata Transaksi (dari data kpi)
+    try:
+        atv = kpi.get("Rata-rata Nilai Transaksi (ATV)", 0)
+        ipb = kpi.get("Item per Transaksi (IPB)", 0)
+        insights.append(
+            f"**💸 Pola Belanja:** Rata-rata pelanggan Anda menghabiskan **{format_rupiah(atv)}** "
+            f"dengan membeli **{ipb:.2f} item** per transaksi (IPB)."
+        )
+    except Exception as e:
+        print(f"Gagal generate insight kpi: {e}")
+
+    # 6. Catatan Penting tentang PROFIT
+    insights.append(
+        "**💡 Catatan Profit:** Untuk melihat *menu paling profit* (berdasarkan COGS), "
+        "silakan cek di tab **'💰 COGS & Profit'**. Tab ini hanya menganalisis *penjualan* (GMV)."
+    )
+
+    return insights
+
+
 # Fungsi Pemuatan Data (File Upload)
 
 # #################################################################
@@ -746,7 +911,7 @@ def calculate_delta(value_A, value_B, formatter_func, higher_is_better=True):
 # #################################################################
 
 
-@st.cache_data
+# --- PERBAIKAN DI SINI: Hapus satu @st.cache_data ---
 @st.cache_data
 def load_data_gmv(uploaded_file, use_db=False):
     """Memuat dan membersihkan data GMV (File 1) DAN membaca headernya.
@@ -1161,6 +1326,7 @@ def load_data_purchase(uploaded_file, use_db=False):
     return df
 
 
+@st.cache_data
 def analyze_purchase_data(df):
     """
     Menganalisis data pembelian yang sudah difilter.
@@ -1556,9 +1722,13 @@ def build_global_filters(data_gmv, data_cogs, data_waiter, data_purchase):
     return filtered_gmv, filtered_cogs, filtered_waiter, filtered_purchase
 
 
+# --- INI FUNGSI TAB 1 PENGGANTI YANG SUDAH LENGKAP ---
+
+
 def build_tab1_sales(filtered_gmv):
     """
     Menggambar semua elemen untuk Tab 1.
+    (VERSI DENGAN FORMAT JAM BARU dan INSIGHT DI BAWAH)
     """
     if filtered_gmv is not None:
         if not filtered_gmv.empty:
@@ -1566,13 +1736,23 @@ def build_tab1_sales(filtered_gmv):
             end_date = filtered_gmv["Sales Date In"].max().strftime("%d-%m-%Y")
             st.subheader(f"Periode Analisis: {start_date} s.d. {end_date}")
 
-            # === 1. KPI UTAMA (Tetap di Atas) ===
+            # === 1. HITUNG SEMUA DATA DULU (PENTING!) ===
+            kpi = calculate_sales_kpi(filtered_gmv)
+            (
+                top_selling,
+                top_grossing,
+                top_sell_cat,
+                top_gross_cat,
+                bottom_selling,
+                bottom_grossing,
+                menu_sales_cat_df,
+            ) = get_menu_performance(filtered_gmv)
+
+            # === 2. TAMPILKAN KPI UTAMA (Expander Asli Anda) ===
             with st.expander(
                 "📈 KPI Kinerja Penjualan (Revenue, ATV, IPB)", expanded=True
             ):
                 st.header("📊 KPI Kinerja Penjualan")
-                kpi = calculate_sales_kpi(filtered_gmv)
-
                 col1, col2, col3 = st.columns(3)
                 col1.metric(
                     "💰 Total Pendapatan Kotor",
@@ -1610,18 +1790,8 @@ def build_tab1_sales(filtered_gmv):
 
             st.markdown("---")
 
-            # Ambil SEMUA data menu
-            (
-                top_selling,
-                top_grossing,
-                top_sell_cat,
-                top_gross_cat,
-                bottom_selling,
-                bottom_grossing,
-                menu_sales_cat_df,
-            ) = get_menu_performance(filtered_gmv)
+            # === 3. SISA TAB (Semua expander Anda yang lain) ===
 
-            # === 2. URUTAN BARU 1: KATEGORI MENU (INTERAKTIF) ===
             st.header("🍽️ Analisis Menu & Kategori")
 
             if "Menu Category" in filtered_gmv.columns and not menu_sales_cat_df.empty:
@@ -1833,6 +2003,7 @@ def build_tab1_sales(filtered_gmv):
             with st.expander(
                 "⚙️ KPI Operasional (Jam Sibuk, Hari Sibuk, Durasi Makan)", expanded=True
             ):
+                # Panggil fungsi kpi operasional di sini
                 avg_time, peak_hours, peak_days_of_week = get_operational_kpi(
                     filtered_gmv
                 )
@@ -1843,17 +2014,41 @@ def build_tab1_sales(filtered_gmv):
                     )
 
                 col19, col20 = st.columns(2)
+
+                # #############################################################
+                # --- PERUBAHAN DIMULAI DI SINI ---
+                # #############################################################
                 with col19:
                     st.subheader("🕒 Jam Sibuk (Berdasarkan Transaksi)")
+
+                    # Salin data agar tidak mengubah data di cache (best practice)
+                    peak_hours_formatted = peak_hours.copy()
+
+                    # 1. Buat label baru dari kolom 'Hour' (int)
+                    #    f"{h:02d}" memastikan 9 menjadi "09"
+                    peak_hours_formatted["Jam_Label"] = peak_hours_formatted[
+                        "Hour"
+                    ].apply(lambda h: f"{h:02d}:00")
+
+                    # 2. Buat daftar urutan sort manual
+                    hour_sort_order = peak_hours_formatted.sort_values(by="Hour")[
+                        "Jam_Label"
+                    ].tolist()
+
                     chart = create_vertical_bar_chart(
-                        peak_hours,
-                        "Hour",
+                        peak_hours_formatted,  # <-- Gunakan data baru
+                        "Jam_Label",  # <-- Ganti "Hour" dengan kolom label baru
                         "Bill Number",
                         "Jam",
                         "Jumlah Transaksi",
                         x_type="O",
+                        sort_order=hour_sort_order,  # <-- Berikan urutan sort manual
                     )
                     st.altair_chart(chart, use_container_width=True)
+                # #############################################################
+                # --- PERUBAHAN BERAKHIR DI SINI ---
+                # #############################################################
+
                 with col20:
                     st.subheader("🗓️ Hari Sibuk (Berdasarkan Transaksi)")
                     day_sort_order = [
@@ -1911,6 +2106,37 @@ def build_tab1_sales(filtered_gmv):
                 else:
                     st.warning("Kolom 'Visit Purpose' tidak ditemukan di File 1.")
 
+            # #############################################################
+            # --- BLOK INSIGHT (TETAP DI PALING BAWAH) ---
+            # #############################################################
+
+            st.markdown("---")  # Tambahkan pemisah visual
+            st.header("💡 Insight Otomatis (Ringkasan)")
+
+            # Panggil fungsi 'pencari insight' kita
+            # Kita gunakan data yang sudah dihitung di atas
+
+            insights = generate_gmv_insights(
+                kpi, top_selling, bottom_selling, peak_hours, peak_days_of_week
+            )
+
+            # Tampilkan dalam expander baru
+            with st.expander(
+                "Klik untuk melihat Temuan Kunci dari Data Penjualan Anda",
+                expanded=True,
+            ):
+                if insights:
+                    for insight in insights:
+                        st.markdown(f"&bull; {insight}")  # Tampilkan sebagai daftar
+                else:
+                    st.info(
+                        "Tidak ada insight otomatis yang dapat dibuat dari data ini."
+                    )
+
+            # #############################################################
+            # --- BATAS BLOK INSIGHT BARU ---
+            # #############################################################
+
         elif filtered_gmv is not None and filtered_gmv.empty:
             st.warning(
                 "Tidak ada data ditemukan di File GMV untuk rentang waktu yang dipilih."
@@ -1921,13 +2147,168 @@ def build_tab1_sales(filtered_gmv):
         )
 
 
+# #################################################################
+# --- FUNGSI BARU UNTUK INSIGHT DI TAB 1 ---
+# #################################################################
+@st.cache_data(show_spinner=False)
+def generate_gmv_insights(
+    kpi, top_selling, bottom_selling, peak_hours, peak_days_of_week
+):
+    """
+    Menganalisis data GMV yang sudah diproses dan menghasilkan insight
+    dalam bahasa alami.
+    """
+    insights = []
+
+    # 1. Insight Menu Paling Laris (dari data top_selling)
+    try:
+        if not top_selling.empty:
+            top_item = top_selling.iloc[0]["Menu"]
+            top_qty = top_selling.iloc[0]["Qty"]
+            insights.append(
+                f"**🚀 Menu Paling Laris:** `{top_item}` adalah bintang utama Anda, "
+                f"terjual sebanyak **{top_qty:,.0f} porsi** pada periode ini."
+            )
+    except Exception as e:
+        print(f"Gagal generate insight top_selling: {e}")
+
+    # 2. Insight Menu Jarang Laku (dari data bottom_selling)
+    try:
+        if not bottom_selling.empty:
+            bottom_item = bottom_selling.iloc[0]["Menu"]
+            bottom_qty = bottom_selling.iloc[0]["Qty"]
+            insights.append(
+                f"**📉 Menu Jarang Laku:** `{bottom_item}` perlu dievaluasi. "
+                f"Menu ini hanya terjual **{bottom_qty:,.0f} porsi**."
+            )
+    except Exception as e:
+        print(f"Gagal generate insight bottom_selling: {e}")
+
+    # 3. Insight Hari Paling Ramai (dari data peak_days_of_week)
+    try:
+        if not peak_days_of_week.empty:
+            peak_day_data = peak_days_of_week.sort_values(
+                by="Bill Number", ascending=False
+            ).iloc[0]
+            peak_day = peak_day_data["Day Name"]
+            peak_day_trx = peak_day_data["Bill Number"]
+            insights.append(
+                f"**🗓️ Hari Paling Ramai:** **{peak_day}** adalah hari tersibuk Anda "
+                f"dengan total **{peak_day_trx:,.0f} transaksi**."
+            )
+    except Exception as e:
+        print(f"Gagal generate insight peak_days: {e}")
+
+    # 4. Insight Jam Paling Ramai (dari data peak_hours)
+    try:
+        if not peak_hours.empty:
+            peak_hour_data = peak_hours.sort_values(
+                by="Bill Number", ascending=False
+            ).iloc[0]
+            peak_hour = peak_hour_data["Hour"]
+            peak_hour_trx = peak_hour_data["Bill Number"]
+            insights.append(
+                f"**🕒 Jam Paling Ramai:** Puncak kunjungan terjadi pada pukul **{peak_hour}:00**, "
+                f"mencatat **{peak_hour_trx:,.0f} transaksi**."
+            )
+    except Exception as e:
+        print(f"Gagal generate insight peak_hours: {e}")
+
+    # 5. Insight Rata-rata Transaksi (dari data kpi)
+    try:
+        atv = kpi.get("Rata-rata Nilai Transaksi (ATV)", 0)
+        ipb = kpi.get("Item per Transaksi (IPB)", 0)
+        insights.append(
+            f"**💸 Pola Belanja:** Rata-rata pelanggan Anda menghabiskan **{format_rupiah(atv)}** "
+            f"dengan membeli **{ipb:.2f} item** per transaksi (IPB)."
+        )
+    except Exception as e:
+        print(f"Gagal generate insight kpi: {e}")
+
+    # 6. Catatan Penting tentang PROFIT
+    insights.append(
+        "**💡 Catatan Profit:** Untuk melihat *menu paling profit* (berdasarkan COGS), "
+        "silakan cek di tab **'💰 COGS & Profit'**. Tab ini hanya menganalisis *penjualan* (GMV)."
+    )
+
+    return insights
+
+
+# #################################################################
+# --- FUNGSI BARU UNTUK INSIGHT DI TAB 2 (COGS) ---
+# #################################################################
+@st.cache_data(show_spinner=False)
+def generate_cogs_insights(profit_df):
+    """
+    Menganalisis data profit_df yang sudah diproses dan menghasilkan insight
+    dalam bahasa alami untuk Tab 2.
+    """
+    insights = []
+
+    # Pastikan data tidak kosong
+    if profit_df is None or profit_df.empty:
+        return ["Tidak ada data profit untuk dianalisis."]
+
+    try:
+        # 1. Insight Profitabilitas Keseluruhan
+        total_revenue = profit_df["Total Revenue (Rp)"].sum()
+        total_profit = profit_df["Total Profit (Rp)"].sum()
+        avg_margin_percent = (
+            (total_profit / total_revenue) * 100 if total_revenue > 0 else 0
+        )
+
+        insights.append(
+            f"**💰 Profitabilitas Umum:** Dari total revenue **{format_rupiah(total_revenue)}** (berdasarkan file COGS), "
+            f"Anda menghasilkan profit kotor sebesar **{format_rupiah(total_profit)}**, "
+            f"dengan rata-rata margin profit **{avg_margin_percent:,.1f}%**."
+        )
+
+        # Filter item yang valid (pernah terjual)
+        df_valid = profit_df[profit_df["Qty"] > 0].copy()
+        if not df_valid.empty:
+
+            # 2. Insight Menu Paling Untung (Rp)
+            top_profit_item = df_valid.nlargest(1, "Total Profit (Rp)").iloc[0]
+            insights.append(
+                f"**🏆 Bintang Profit (Rp):** `{top_profit_item['Menu']}` adalah penyumbang profit terbesar Anda, "
+                f"menghasilkan **{format_rupiah(top_profit_item['Total Profit (Rp)'])}** sendirian."
+            )
+
+            # 3. Insight Menu Margin Tertinggi (%)
+            top_margin_item = df_valid.nlargest(1, "Margin (%)").iloc[0]
+            insights.append(
+                f"**📈 Efisiensi Terbaik (%):** `{top_margin_item['Menu']}` adalah menu paling efisien "
+                f"dengan margin profit **{format_persen(top_margin_item['Margin (%)'])}**. "
+                f"Meskipun mungkin bukan penyumbang profit terbesar, COGS-nya sangat sehat."
+            )
+
+            # 4. Insight Menu Paling Rugi / Profit Terendah (Rp)
+            bottom_profit_item = df_valid.nsmallest(1, "Total Profit (Rp)").iloc[0]
+            insights.append(
+                f"**💸 Perlu Perhatian (Rp):** Waspadai `{bottom_profit_item['Menu']}`. "
+                f"Menu ini hanya menghasilkan profit **{format_rupiah(bottom_profit_item['Total Profit (Rp)'])}** "
+                f"dari **{bottom_profit_item['Qty']:,.0f} porsi** terjual. (Evaluasi resep atau harga jual)."
+            )
+
+    except Exception as e:
+        print(f"Gagal generate insight COGS: {e}")
+        insights.append(f"Gagal membuat insight: {e}")
+
+    return insights
+
+
 def build_tab2_cogs(filtered_cogs):
-    """Menggambar semua elemen untuk Tab 2."""
+    """Menggambar semua elemen untuk Tab 2.
+    (VERSI BARU DENGAN KOTAK INSIGHT DI BAWAH)
+    """
     if filtered_cogs is not None:
         if not filtered_cogs.empty:
             st.header("💰 Analisis Profitabilitas Menu (COGS)")
+
+            # 1. Panggil fungsi analisis (ini sudah di-cache)
             profit_df = analyze_profit(filtered_cogs)
 
+            # 2. Expander Ringkasan Profitabilitas (tidak berubah)
             with st.expander(
                 "💰 Ringkasan Profitabilitas (Total Revenue, COGS, Profit)",
                 expanded=True,
@@ -1952,6 +2333,7 @@ def build_tab2_cogs(filtered_cogs):
 
             st.markdown("---")
 
+            # 3. Expander Rincian Profitabilitas (tidak berubah)
             with st.expander("📝 Rincian Profitabilitas per Menu (Tabel)"):
                 st.subheader("Rincian Profitabilitas per Menu")
                 st.info(
@@ -1977,6 +2359,7 @@ def build_tab2_cogs(filtered_cogs):
 
             st.markdown("---")
 
+            # 4. Expander Analisis Performa (tidak berubah)
             with st.expander(
                 "📊 Analisis Performa Profit Menu (Grafik Top & Bottom 10)",
                 expanded=True,
@@ -2037,6 +2420,33 @@ def build_tab2_cogs(filtered_cogs):
                     )
                     st.altair_chart(chart, use_container_width=True)
 
+            # #############################################################
+            # --- BLOK INSIGHT BARU DITEMPATKAN DI SINI (PALING BAWAH) ---
+            # #############################################################
+
+            st.markdown("---")  # Tambahkan pemisah visual
+            st.header("💡 Insight Otomatis (COGS & Profit)")
+
+            # Panggil fungsi 'pencari insight' kita
+            # Kita gunakan 'profit_df' yang sudah dihitung di awal
+            insights = generate_cogs_insights(profit_df)
+
+            # Tampilkan dalam expander baru
+            with st.expander(
+                "Klik untuk melihat Temuan Kunci dari Data Profit Anda", expanded=True
+            ):
+                if insights:
+                    for insight in insights:
+                        st.markdown(f"&bull; {insight}")  # Tampilkan sebagai daftar
+                else:
+                    st.info(
+                        "Tidak ada insight otomatis yang dapat dibuat dari data ini."
+                    )
+
+            # #############################################################
+            # --- BATAS BLOK INSIGHT BARU ---
+            # #############################################################
+
         elif filtered_cogs is not None and filtered_cogs.empty:
             st.warning(
                 "Tidak ada data ditemukan di File COGS untuk rentang waktu yang dipilih."
@@ -2047,15 +2457,471 @@ def build_tab2_cogs(filtered_cogs):
         )
 
 
+# #################################################################
+# --- FUNGSI BARU UNTUK INSIGHT DI TAB 3 (SDM & WAKTU) ---
+# #################################################################
+@st.cache_data(show_spinner=False)
+def generate_hr_insights(time_data, waiter_data):
+    """
+    Menganalisis data SDM & Waktu yang sudah diproses dan menghasilkan insight
+    dalam bahasa alami untuk Tab 3.
+    """
+    insights = []
+
+    # Pastikan data tidak kosong
+    if (time_data is None or time_data.empty) and (
+        waiter_data is None or waiter_data.empty
+    ):
+        return ["Tidak ada data SDM & Waktu untuk dianalisis."]
+
+    try:
+        # 1. Insight Waktu Paling Ramai (berdasarkan Penjualan)
+        if time_data is not None and not time_data.empty:
+            # Urutkan berdasarkan Total_Penjualan
+            peak_time_sales = time_data.nlargest(1, "Total_Penjualan").iloc[0]
+            insights.append(
+                f"**🕒 Waktu Emas (Penjualan):** Sesi **{peak_time_sales['Waktu Kunjungan']}** "
+                f"adalah penghasil revenue terbesar, menyumbang **{format_rupiah(peak_time_sales['Total_Penjualan'])}**."
+            )
+
+            # 2. Insight Waktu Paling Sibuk (berdasarkan Transaksi)
+            peak_time_trx = time_data.nlargest(1, "Jumlah_Transaksi").iloc[0]
+            insights.append(
+                f"** busiest Waktu Tersibuk (Transaksi):** Sesi **{peak_time_trx['Waktu Kunjungan']}** "
+                f"memiliki lalu lintas transaksi tertinggi dengan **{format_angka_bulat(peak_time_trx['Jumlah_Transaksi'])}** transaksi."
+            )
+
+    except Exception as e:
+        print(f"Gagal generate insight time_data: {e}")
+
+    try:
+        # 3. Insight Waiter Terbaik (berdasarkan Penjualan)
+        if waiter_data is not None and not waiter_data.empty:
+            top_waiter = waiter_data.nlargest(1, "Total_Penjualan").iloc[0]
+            insights.append(
+                f"**🏆 Waiter Performa Terbaik:** **{top_waiter['Waiter']}** adalah top sales Anda, "
+                f"menghasilkan **{format_rupiah(top_waiter['Total_Penjualan'])}** dari "
+                f"**{format_angka_bulat(top_waiter['Jumlah_Transaksi'])}** transaksi."
+            )
+
+            # 4. Insight Performa Tim
+            avg_sales_per_waiter = waiter_data["Total_Penjualan"].mean()
+            avg_trx_per_waiter = waiter_data["Jumlah_Transaksi"].mean()
+            insights.append(
+                f"**🧑‍🍳 Performa Tim (Top 10):** Rata-rata, 10 waiter teratas Anda "
+                f"menghasilkan **{format_rupiah(avg_sales_per_waiter)}** "
+                f"dari **{avg_trx_per_waiter:,.1f}** transaksi per orang."
+            )
+
+    except Exception as e:
+        print(f"Gagal generate insight waiter_data: {e}")
+
+    return insights
+
+
+# #################################################################
+# --- FUNGSI BARU UNTUK INSIGHT DI TAB 6 (TARGET) - VERSI 2.0 INTERAKTIF ---
+# #################################################################
+@st.cache_data(show_spinner=False)
+def generate_target_insights(kpi_dict):
+    """
+    Menganalisis kamus KPI dari Tab 6 dan menghasilkan insight
+    dalam bahasa alami (DENGAN TIPE INTERAKTIF).
+    """
+    insights = []  # Ini akan menjadi daftar kamus: [{"type": "...", "text": "..."}]
+
+    try:
+        sisa_hari = kpi_dict.get("sisa_hari", 0)
+
+        # --- KASUS 1: BULAN SUDAH SELESAI ---
+        if sisa_hari <= 0:
+            pencapaian_persen = kpi_dict.get("pencapaian_persen", 0)
+            if pencapaian_persen >= 1:  # 1.0 = 100%
+                insights.append(
+                    {
+                        "type": "success",
+                        "text": f"**TARGET TERCAPAI:** Selamat! Bulan ini ditutup dengan pencapaian **{pencapaian_persen*100:,.1f}%** dari target.",
+                    }
+                )
+            else:
+                insights.append(
+                    {
+                        "type": "warning",
+                        "text": f"**LAPORAN FINAL:** Bulan ini ditutup dengan pencapaian **{pencapaian_persen*100:,.1f}%** dari target.",
+                    }
+                )
+            return insights
+
+        # --- KASUS 2: BULAN MASIH BERJALAN ---
+        proyeksi_pct = kpi_dict.get("proyeksi_vs_target_persen", 0)
+        rdr_weekday = kpi_dict.get("rdr_weekday", 0)
+        avg_sales_weekday = kpi_dict.get("avg_sales_weekday", 0)
+        rdr_weekend = kpi_dict.get("rdr_weekend", 0)
+        avg_sales_weekend = kpi_dict.get("avg_sales_weekend", 0)
+
+        # Insight 1: Status On/Off Track
+        if proyeksi_pct > 1.05:  # Di atas 105%
+            insights.append(
+                {
+                    "type": "success",
+                    "text": f"**SANGAT ON TRACK:** Performa luar biasa! Proyeksi cerdas Anda mencapai **{proyeksi_pct*100:,.1f}%** dari target. Pertahankan!",
+                }
+            )
+        elif proyeksi_pct >= 0.98:  # Antara 98% - 105%
+            insights.append(
+                {
+                    "type": "info",
+                    "text": f"**ON TRACK:** Kerja bagus! Proyeksi cerdas Anda saat ini **{proyeksi_pct*100:,.1f}%** dari target. Jaga momentum ini.",
+                }
+            )
+        else:  # Di bawah 98%
+            insights.append(
+                {
+                    "type": "error",
+                    "text": f"**OFF TRACK:** Perlu perhatian! Proyeksi cerdas Anda hanya **{proyeksi_pct*100:,.1f}%** dari target. Rencana aksi di bawah ini Wajib dijalankan.",
+                }
+            )
+
+        # Insight 2: Rencana Aksi Weekday
+        delta_weekday = rdr_weekday - avg_sales_weekday
+        if delta_weekday > 0:
+            insights.append(
+                {
+                    "type": "warning",
+                    "text": f"**FOKUS WEEKDAY:** Untuk mengejar target, penjualan **Weekday (Sen-Kam)** harus ditingkatkan dari rata-rata saat ini ({format_rupiah(avg_sales_weekday)}) menjadi **{format_rupiah(rdr_weekday)}** (perlu tambahan {format_rupiah(delta_weekday)}/hari).",
+                }
+            )
+        else:
+            insights.append(
+                {
+                    "type": "success",
+                    "text": f"**PERFORMA WEEKDAY:** Penjualan Weekday (Sen-Kam) Anda (rata-rata {format_rupiah(avg_sales_weekday)}) **SUDAH BAIK** dan di atas target harian baru ({format_rupiah(rdr_weekday)}).",
+                }
+            )
+
+        # Insight 3: Rencana Aksi Weekend
+        delta_weekend = rdr_weekend - avg_sales_weekend
+        if delta_weekend > 0 and rdr_weekend > 0:
+            insights.append(
+                {
+                    "type": "warning",
+                    "text": f"**FOKUS WEEKEND:** Penjualan **Weekend (Jum-Min)** juga harus ditingkatkan dari rata-rata saat ini ({format_rupiah(avg_sales_weekend)}) menjadi **{format_rupiah(rdr_weekend)}** (perlu tambahan {format_rupiah(delta_weekend)}/hari).",
+                }
+            )
+
+        # Insight 4: Perbandingan Model
+        proyeksi_cerdas = kpi_dict.get("proyeksi_akhir_bulan", 0)
+        proyeksi_prophet = kpi_dict.get("proyeksi_prophet", 0)
+
+        if proyeksi_prophet > (proyeksi_cerdas * 1.05):  # Prophet 5% lebih tinggi
+            insights.append(
+                {
+                    "type": "info",
+                    "text": f"**CATATAN AI:** Model Prophet (**{format_rupiah(proyeksi_prophet)}**) lebih optimis daripada Proyeksi Cerdas (**{format_rupiah(proyeksi_cerdas)}**). Ini mungkin karena tren atau musiman yang positif.",
+                }
+            )
+        elif proyeksi_prophet < (proyeksi_cerdas * 0.95):  # Prophet 5% lebih rendah
+            insights.append(
+                {
+                    "type": "warning",
+                    "text": f"**CATATAN AI:** Model Prophet (**{format_rupiah(proyeksi_prophet)}**) lebih pesimis daripada Proyeksi Cerdas (**{format_rupiah(proyeksi_cerdas)}**). Ini mungkin karena tren yang melambat.",
+                }
+            )
+
+    except Exception as e:
+        print(f"Gagal generate insight target: {e}")
+        insights.append({"type": "error", "text": f"Gagal membuat insight target: {e}"})
+
+    return insights
+
+
+# #################################################################
+# --- FUNGSI BARU UNTUK INSIGHT DI TAB 5 (FORECAST) ---
+# #################################################################
+@st.cache_data(show_spinner=False)
+def generate_forecast_insights(forecast_df, last_date):
+    """
+    Menganalisis data forecast_df yang sudah diproses dan menghasilkan insight
+    dalam bahasa alami untuk Tab 5.
+    """
+    insights = []
+
+    if forecast_df is None or forecast_df.empty:
+        return ["Tidak ada data ramalan untuk dianalisis."]
+
+    try:
+        # 1. Insight Tren Jangka Panjang
+        # Ambil tren pada hari terakhir data aktual
+        trend_now = forecast_df[forecast_df["ds"] <= last_date]["trend"].iloc[-1]
+        # Ambil tren pada hari terakhir ramalan
+        trend_future_end = forecast_df["trend"].iloc[-1]
+
+        trend_pct = (trend_future_end - trend_now) / trend_now if trend_now != 0 else 0
+
+        if trend_pct > 0.01:
+            insights.append(
+                f"**📈 Tren Jangka Panjang:** Model mendeteksi **tren NAIK** positif "
+                f"({trend_pct:+.1%}) untuk periode ke depan."
+            )
+        elif trend_pct < -0.01:
+            insights.append(
+                f"**📉 Tren Jangka Panjang:** Model mendeteksi **tren TURUN** "
+                f"({trend_pct:+.1%}). Waspadai potensi perlambatan bisnis."
+            )
+        else:
+            insights.append(
+                f"**⚖️ Tren Jangka Panjang:** Model mendeteksi tren penjualan yang **STABIL** "
+                f"(perubahan {trend_pct:+.1%})."
+            )
+
+        # 2. Insight Ramalan 7 Hari ke Depan
+        future_df = forecast_df[forecast_df["ds"] > last_date]
+        if len(future_df) >= 7:
+            next_7_days_sales = future_df.iloc[:7]["yhat"].sum()
+            insights.append(
+                f"**🔮 Ramalan 7 Hari:** Berdasarkan data Anda, model memprediksi "
+                f"penjualan sekitar **{format_rupiah(next_7_days_sales)}** untuk 7 hari ke depan."
+            )
+
+        # 3. Insight Pola Mingguan
+        insights.append(
+            f"**🗓️ Pola Mingguan:** Untuk melihat hari apa yang paling kuat dan paling lemah "
+            f"dalam seminggu, periksa grafik **'Analisis Komponen Tren & Musiman'** di atas."
+        )
+
+    except Exception as e:
+        print(f"Gagal generate insight forecast: {e}")
+        insights.append(f"Gagal membuat insight ramalan: {e}")
+
+    return insights
+
+
+# #################################################################
+# --- FUNGSI BARU UNTUK INSIGHT DI TAB 4 (A/B COMPARISON) ---
+# #################################################################
+@st.cache_data(show_spinner=False)
+def generate_comparison_insights(
+    kpi_A_gmv, kpi_B_gmv, kpi_A_cogs, kpi_B_cogs, kpi_A_waiter, kpi_B_waiter
+):
+    """
+    Menganalisis perbandingan KPI A vs B dan menghasilkan insight
+    dalam bahasa alami untuk Tab 4.
+    """
+    insights = []
+
+    # Fungsi helper kecil untuk menghitung delta persen dengan aman
+    def calc_pct_delta(a, b):
+        if b is None or b == 0:
+            return 1.0 if (a is not None and a != 0) else 0.0
+        if a is None:
+            a = 0
+        return (a - b) / b
+
+    try:
+        # 1. Insight Performa GMV (Revenue)
+        rev_A = kpi_A_gmv.get("Total Pendapatan Kotor", 0)
+        rev_B = kpi_B_gmv.get("Total Pendapatan Kotor", 0)
+        pct_rev = calc_pct_delta(rev_A, rev_B)
+
+        if pct_rev > 0.01:  # Naik
+            insights.append(
+                f"**📈 Performa Penjualan:** Kinerja penjualan **NAIK** signifikan sebesar **{pct_rev:+.1%}** "
+                f"dibanding periode B."
+            )
+        elif pct_rev < -0.01:  # Turun
+            insights.append(
+                f"**📉 Performa Penjualan:** Kinerja penjualan **TURUN** sebesar **{pct_rev:+.1%}** "
+                f"dibanding periode B. Perlu investigasi."
+            )
+        else:
+            insights.append(
+                f"**⚖️ Performa Penjualan:** Kinerja penjualan **STABIL** (perubahan {pct_rev:+.1%}) "
+                f"dibanding periode B."
+            )
+
+        # 2. Insight Pendorong GMV (Transaksi vs ATV)
+        trx_A = kpi_A_gmv.get("Total Transaksi", 0)
+        trx_B = kpi_B_gmv.get("Total Transaksi", 0)
+        pct_trx = calc_pct_delta(trx_A, trx_B)
+
+        atv_A = kpi_A_gmv.get("Rata-rata Nilai Transaksi (ATV)", 0)
+        atv_B = kpi_B_gmv.get("Rata-rata Nilai Transaksi (ATV)", 0)
+        pct_atv = calc_pct_delta(atv_A, atv_B)
+
+        if abs(pct_trx) > abs(pct_atv):
+            insights.append(
+                f"**💸 Pendorong Penjualan:** Perubahan penjualan utama didorong oleh **Jumlah Transaksi** "
+                f"(berubah **{pct_trx:+.1%}**), sementara ATV lebih stabil."
+            )
+        else:
+            insights.append(
+                f"**💸 Pendorong Penjualan:** Perubahan penjualan utama didorong oleh **Nilai Transaksi (ATV)** "
+                f"(berubah **{pct_atv:+.1%}**), sementara jumlah transaksi lebih stabil."
+            )
+
+        # 3. Insight Profitabilitas
+        profit_A = kpi_A_cogs[2]  # Total Profit A
+        profit_B = kpi_B_cogs[2]  # Total Profit B
+        pct_profit = calc_pct_delta(profit_A, profit_B)
+
+        margin_A = kpi_A_cogs[3]  # Margin % A
+        margin_B = kpi_B_cogs[3]  # Margin % B
+        delta_margin = margin_A - margin_B  # Delta absolut
+
+        if pct_profit > 0.01:
+            insights.append(
+                f"**💰 Kinerja Profit:** Kabar baik! **Total Profit NAIK** sebesar **{pct_profit:+.1%}**. "
+                f"Efisiensi margin juga (membaik/memburuk) sebesar **{delta_margin:+.1f} poin**."
+            )
+        elif pct_profit < -0.01:
+            insights.append(
+                f"**⚠️ Kinerja Profit:** Hati-hati! **Total Profit TURUN** sebesar **{pct_profit:+.1%}**. "
+                f"Efisiensi margin juga (membaik/memburuk) sebesar **{delta_margin:+.1f} poin**."
+            )
+
+    except Exception as e:
+        print(f"Gagal generate insight comparison: {e}")
+        insights.append(f"Gagal membuat perbandingan insight: {e}")
+
+    return insights
+
+
+# #################################################################
+# --- FUNGSI BARU UNTUK INSIGHT DI TAB 7 (ULASAN) ---
+# #################################################################
+@st.cache_data(show_spinner=False)
+def generate_review_insights(
+    total_ulasan, avg_rating, nps_score, df_positive_topics, df_negative_topics
+):
+    """
+    Menganalisis data ulasan yang sudah diproses dan menghasilkan insight
+    dalam bahasa alami untuk Tab 7.
+    """
+    insights = []
+
+    if total_ulasan == 0:
+        return ["Belum ada data ulasan untuk dianalisis."]
+
+    try:
+        # 1. Insight Sentimen Umum
+        insight_nps = "NETRAL"
+        if nps_score > 20:
+            insight_nps = "BAIK"
+        elif nps_score < 0:
+            insight_nps = "PERLU PERHATIAN"
+
+        insights.append(
+            f"**❤️ Sentimen Umum:** Anda menerima **{total_ulasan} ulasan** dengan rata-rata rating **{avg_rating:.1f} dari 5**. "
+            f"Skor NPS Anda adalah **{nps_score:.1f}**, yang tergolong **{insight_nps}**."
+        )
+
+        # 2. Insight Kekuatan Terbesar (Top Positive)
+        if not df_positive_topics.empty:
+            top_positive = df_positive_topics.iloc[0]
+            insights.append(
+                f"**👍 Kekuatan Terbesar:** Pelanggan paling sering memuji tentang **{top_positive['Topik']}** "
+                f"(disebut **{top_positive['Jumlah']} kali**). Pertahankan ini!"
+            )
+
+        # 3. Insight Keluhan Utama (Top Negative)
+        if not df_negative_topics.empty:
+            top_negative = df_negative_topics.iloc[0]
+            insights.append(
+                f"**👎 Keluhan Utama:** Area perbaikan paling mendesak adalah **{top_negative['Topik']}** "
+                f"(disebut **{top_negative['Jumlah']} kali**). Ini adalah prioritas Anda."
+            )
+
+        # 4. Insight Rating Bintang 1
+        bintang_1 = df_negative_topics[
+            df_negative_topics["Topik"] == "Rating 1 (Sangat Buruk)"
+        ]
+        if "Rating 1 (Sangat Buruk)" in df_negative_topics["Topik"].values:
+            count_bintang_1 = df_negative_topics[
+                df_negative_topics["Topik"] == "Rating 1 (Sangat Buruk)"
+            ].iloc[0]["Jumlah"]
+            if count_bintang_1 > 0:
+                insights.append(
+                    f"**🚨 Peringatan Detractor:** Ada **{count_bintang_1} ulasan bintang 1** "
+                    f"yang perlu segera ditindaklanjuti."
+                )
+
+    except Exception as e:
+        print(f"Gagal generate insight ulasan: {e}")
+        insights.append(f"Gagal membuat insight ulasan: {e}")
+
+    return insights
+
+
+# #################################################################
+# --- FUNGSI BARU UNTUK INSIGHT DI TAB 8 (PEMBELIAN) ---
+# #################################################################
+@st.cache_data(show_spinner=False)
+def generate_purchase_insights(
+    total_cost, cost_by_category, cost_by_supplier, top_items
+):
+    """
+    Menganalisis data pembelian yang sudah diproses dan menghasilkan insight
+    dalam bahasa alami untuk Tab 8.
+    """
+    insights = []
+
+    if total_cost == 0 or top_items.empty:
+        return ["Belum ada data pembelian untuk dianalisis."]
+
+    try:
+        # 1. Insight Total Biaya
+        insights.append(
+            f"**🛒 Total Biaya:** Total biaya pembelian Anda (yang tercatat > Rp 0) "
+            f"pada periode ini adalah **{format_rupiah(total_cost)}**."
+        )
+
+        # 2. Insight Kategori Biaya Terbesar
+        if not cost_by_category.empty:
+            top_cat = cost_by_category.iloc[0]
+            insights.append(
+                f"**🍔 Kategori Terbesar:** Kategori pengeluaran terbesar Anda adalah **`{top_cat['Category']}`**, "
+                f"menghabiskan **{format_rupiah(top_cat['Total'])}**."
+            )
+
+        # 3. Insight Supplier Terbesar
+        if not cost_by_supplier.empty:
+            top_supp = cost_by_supplier.iloc[0]
+            insights.append(
+                f"**🚚 Supplier Utama:** Supplier dengan pembelian terbesar adalah **`{top_supp['Supplier Name']}`**, "
+                f"dengan total pembelian **{format_rupiah(top_supp['Total'])}**."
+            )
+
+        # 4. Insight Item Termahal
+        if not top_items.empty:
+            top_item = top_items.iloc[0]
+            insights.append(
+                f"**💸 Item Termahal:** Item tunggal yang paling banyak memakan biaya adalah **`{top_item['Product Name']}`**, "
+                f"dengan total **{format_rupiah(top_item['Total'])}**. "
+                f"Selalu periksa harga beli dan penggunaan (waste) item ini."
+            )
+
+    except Exception as e:
+        print(f"Gagal generate insight pembelian: {e}")
+        insights.append(f"Gagal membuat insight pembelian: {e}")
+
+    return insights
+
+
 def build_tab3_hr(filtered_waiter):
-    """Menggambar semua elemen untuk Tab 3."""
+    """Menggambar semua elemen untuk Tab 3.
+    (VERSI BARU DENGAN KOTAK INSIGHT DI BAWAH)
+    """
     if filtered_waiter is not None:
         if not filtered_waiter.empty:
             st.header("🧑‍🍳 Analisis Kinerja Waiter & Waktu Kunjungan")
 
+            # 1. Hitung data analisis (sudah di-cache)
+            time_data = get_peak_time_analysis(filtered_waiter)
+            waiter_data = get_waiter_performance(filtered_waiter)
+
+            # 2. Expander Waktu Kunjungan (tidak berubah)
             with st.expander("🕒 Analisis Waktu Kunjungan Pelanggan", expanded=True):
                 st.subheader("🕒 Waktu Kunjungan Pelanggan")
-                time_data = get_peak_time_analysis(filtered_waiter)
                 sort_order_time = [
                     "Breakfast/Brunch (10-12)",
                     "Lunch (12-17)",
@@ -2101,9 +2967,9 @@ def build_tab3_hr(filtered_waiter):
 
             st.markdown("---")
 
+            # 3. Expander Performa Waiter (tidak berubah)
             with st.expander("🏆 Performa Waiter Teratas (Top 10)", expanded=True):
                 st.subheader("🏆 Performa Waiter Teratas (Top 10)")
-                waiter_data = get_waiter_performance(filtered_waiter)
                 chart_waiter = create_horizontal_bar_chart(
                     waiter_data,
                     "Total_Penjualan",
@@ -2122,6 +2988,33 @@ def build_tab3_hr(filtered_waiter):
                     use_container_width=True,
                 )
 
+            # #############################################################
+            # --- BLOK INSIGHT BARU DITEMPATKAN DI SINI (PALING BAWAH) ---
+            # #############################################################
+
+            st.markdown("---")  # Tambahkan pemisah visual
+            st.header("💡 Insight Otomatis (SDM & Waktu)")
+
+            # Panggil fungsi 'pencari insight' kita
+            # Kita gunakan data yang sudah dihitung di awal tab ini
+            insights = generate_hr_insights(time_data, waiter_data)
+
+            # Tampilkan dalam expander baru
+            with st.expander(
+                "Klik untuk melihat Temuan Kunci dari Data SDM & Waktu", expanded=True
+            ):
+                if insights:
+                    for insight in insights:
+                        st.markdown(f"&bull; {insight}")  # Tampilkan sebagai daftar
+                else:
+                    st.info(
+                        "Tidak ada insight otomatis yang dapat dibuat dari data ini."
+                    )
+
+            # #############################################################
+            # --- BATAS BLOK INSIGHT BARU ---
+            # #############################################################
+
         elif filtered_waiter is not None and filtered_waiter.empty:
             st.warning(
                 "Tidak ada data ditemukan di File Rekapitulasi untuk rentang waktu yang dipilih."
@@ -2133,7 +3026,9 @@ def build_tab3_hr(filtered_waiter):
 
 
 def build_tab4_comparison(data_gmv, data_cogs, data_waiter):
-    """Menggambar Tab 4 (Perbandingan A/B) dengan tata letak A | Delta | B."""
+    """Menggambar Tab 4 (Perbandingan A/B) dengan tata letak A | Delta | B.
+    (VERSI BARU DENGAN KOTAK INSIGHT DI BAWAH)
+    """
 
     st.header("⚖️ Analisis Perbandingan Periodik (A vs B)")
     st.info(
@@ -2175,6 +3070,7 @@ def build_tab4_comparison(data_gmv, data_cogs, data_waiter):
         return sliced_df, caption_text
 
     def get_profit_kpis(df_cogs_sliced):
+        # Kita panggil fungsi analyze_profit yang sudah di-cache dan difilter
         profit_df = analyze_profit(df_cogs_sliced)
         if profit_df.empty:
             return 0, 0, 0, 0
@@ -2317,6 +3213,7 @@ def build_tab4_comparison(data_gmv, data_cogs, data_waiter):
 
     st.markdown("---")
 
+    # Hitung semua KPI
     kpi_A_gmv = (
         calculate_sales_kpi(gmv_A)
         if data_gmv is not None
@@ -2332,11 +3229,13 @@ def build_tab4_comparison(data_gmv, data_cogs, data_waiter):
     kpi_A_waiter = get_waiter_kpis(waiter_A) if data_waiter is not None else (0, 0, 0)
     kpi_B_waiter = get_waiter_kpis(waiter_B) if data_waiter is not None else (0, 0, 0)
 
+    # Tampilkan UI Metrik (tidak berubah)
     if data_gmv is not None:
         st.markdown("##### 📊 Kinerja Penjualan (dari File 1: GMV)")
         with st.container(border=True):
+            # ... (semua kode metrik A | Delta | B Anda) ...
             col_A, col_Delta, col_B = st.columns([0.35, 0.3, 0.35])
-
+            # (Revenue)
             with col_A:
                 st.metric(
                     "Total Pendapatan Kotor",
@@ -2355,7 +3254,7 @@ def build_tab4_comparison(data_gmv, data_cogs, data_waiter):
                     "Total Pendapatan Kotor",
                     format_rupiah(kpi_B_gmv["Total Pendapatan Kotor"]),
                 )
-
+            # (Transaksi)
             with col_A:
                 st.metric(
                     "Total Transaksi", format_angka_bulat(kpi_A_gmv["Total Transaksi"])
@@ -2372,7 +3271,7 @@ def build_tab4_comparison(data_gmv, data_cogs, data_waiter):
                 st.metric(
                     "Total Transaksi", format_angka_bulat(kpi_B_gmv["Total Transaksi"])
                 )
-
+            # (ATV)
             with col_A:
                 st.metric(
                     "Rata-rata (ATV)",
@@ -2391,7 +3290,7 @@ def build_tab4_comparison(data_gmv, data_cogs, data_waiter):
                     "Rata-rata (ATV)",
                     format_rupiah(kpi_B_gmv["Rata-rata Nilai Transaksi (ATV)"]),
                 )
-
+            # (IPB)
             with col_A:
                 st.metric(
                     "Item per Transaksi (IPB)",
@@ -2410,7 +3309,7 @@ def build_tab4_comparison(data_gmv, data_cogs, data_waiter):
                     "Item per Transaksi (IPB)",
                     f"{kpi_B_gmv['Item per Transaksi (IPB)']:.2f}",
                 )
-
+            # (Diskon)
             with col_A:
                 st.metric("Total Diskon", format_rupiah(kpi_A_gmv["Total Diskon"]))
             with col_Delta:
@@ -2428,8 +3327,9 @@ def build_tab4_comparison(data_gmv, data_cogs, data_waiter):
     if data_cogs is not None:
         st.markdown("##### 💰 Kinerja Profitabilitas (dari File 2: COGS)")
         with st.container(border=True):
+            # ... (semua kode metrik COGS A | Delta | B Anda) ...
             col_A, col_Delta, col_B = st.columns([0.35, 0.3, 0.35])
-
+            # (Revenue COGS)
             with col_A:
                 st.metric("Total Revenue (COGS)", format_rupiah(kpi_A_cogs[0]))
             with col_Delta:
@@ -2439,7 +3339,7 @@ def build_tab4_comparison(data_gmv, data_cogs, data_waiter):
                 st.metric("Perubahan", d_val, d_str, delta_color=d_col)
             with col_B:
                 st.metric("Total Revenue (COGS)", format_rupiah(kpi_B_cogs[0]))
-
+            # (Total COGS)
             with col_A:
                 st.metric("Total COGS", format_rupiah(kpi_A_cogs[1]))
             with col_Delta:
@@ -2449,7 +3349,7 @@ def build_tab4_comparison(data_gmv, data_cogs, data_waiter):
                 st.metric("Perubahan", d_val, d_str, delta_color=d_col)
             with col_B:
                 st.metric("Total COGS", format_rupiah(kpi_B_cogs[1]))
-
+            # (Total Profit)
             with col_A:
                 st.metric("Total Profit", format_rupiah(kpi_A_cogs[2]))
             with col_Delta:
@@ -2459,7 +3359,7 @@ def build_tab4_comparison(data_gmv, data_cogs, data_waiter):
                 st.metric("Perubahan", d_val, d_str, delta_color=d_col)
             with col_B:
                 st.metric("Total Profit", format_rupiah(kpi_B_cogs[2]))
-
+            # (Margin Profit)
             with col_A:
                 st.metric("Margin Profit (%)", format_persen(kpi_A_cogs[3]))
             with col_Delta:
@@ -2474,8 +3374,9 @@ def build_tab4_comparison(data_gmv, data_cogs, data_waiter):
     if data_waiter is not None:
         st.markdown("##### 🧑‍🍳 Kinerja SDM (dari File 3: Waiter)")
         with st.container(border=True):
+            # ... (semua kode metrik Waiter A | Delta | B Anda) ...
             col_A, col_Delta, col_B = st.columns([0.35, 0.3, 0.35])
-
+            # (Total Penjualan SDM)
             with col_A:
                 st.metric("Total Penjualan (SDM)", format_rupiah(kpi_A_waiter[0]))
             with col_Delta:
@@ -2485,7 +3386,7 @@ def build_tab4_comparison(data_gmv, data_cogs, data_waiter):
                 st.metric("Perubahan", d_val, d_str, delta_color=d_col)
             with col_B:
                 st.metric("Total Penjualan (SDM)", format_rupiah(kpi_B_waiter[0]))
-
+            # (Total Transaksi SDM)
             with col_A:
                 st.metric("Total Transaksi (SDM)", format_angka_bulat(kpi_A_waiter[1]))
             with col_Delta:
@@ -2495,7 +3396,7 @@ def build_tab4_comparison(data_gmv, data_cogs, data_waiter):
                 st.metric("Perubahan", d_val, d_str, delta_color=d_col)
             with col_B:
                 st.metric("Total Transaksi (SDM)", format_angka_bulat(kpi_B_waiter[1]))
-
+            # (Rata-rata/Waiter)
             with col_A:
                 st.metric("Rata-rata / Waiter", format_rupiah(kpi_A_waiter[2]))
             with col_Delta:
@@ -2506,9 +3407,38 @@ def build_tab4_comparison(data_gmv, data_cogs, data_waiter):
             with col_B:
                 st.metric("Rata-rata / Waiter", format_rupiah(kpi_B_waiter[2]))
 
+    # #############################################################
+    # --- BLOK INSIGHT BARU DITEMPATKAN DI SINI (PALING BAWAH) ---
+    # #############################################################
+
+    st.markdown("---")  # Tambahkan pemisah visual
+    st.header("💡 Insight Otomatis (Analisis Perbandingan)")
+
+    # Panggil fungsi 'pencari insight' kita
+    # Kita gunakan semua KPI A dan B yang sudah dihitung di awal
+    insights = generate_comparison_insights(
+        kpi_A_gmv, kpi_B_gmv, kpi_A_cogs, kpi_B_cogs, kpi_A_waiter, kpi_B_waiter
+    )
+
+    # Tampilkan dalam expander baru
+    with st.expander(
+        "Klik untuk melihat Temuan Kunci dari Perbandingan A vs B", expanded=True
+    ):
+        if insights:
+            for insight in insights:
+                st.markdown(f"&bull; {insight}")  # Tampilkan sebagai daftar
+        else:
+            st.info("Tidak ada data yang cukup untuk membuat perbandingan insight.")
+
+    # #############################################################
+    # --- BATAS BLOK INSIGHT BARU ---
+    # #############################################################
+
 
 def build_tab5_forecast(data_gmv):
-    """Menggambar Tab 5 (Peramalan Detail) menggunakan Prophet."""
+    """Menggambar Tab 5 (Peramalan Detail) menggunakan Prophet.
+    (VERSI BARU DENGAN KOTAK INSIGHT DI BAWAH)
+    """
     st.header("🔮 Peramalan Tren Penjualan Detail")
     st.info(
         "Tab ini menggunakan model `Prophet` untuk menganalisis data GMV Anda, "
@@ -2632,13 +3562,39 @@ def build_tab5_forecast(data_gmv):
         fig2 = plot_components_plotly(model, forecast_df)
         st.plotly_chart(fig2, use_container_width=True)
 
+        # #############################################################
+        # --- BLOK INSIGHT BARU DITEMPATKAN DI SINI (PALING BAWAH) ---
+        # #############################################################
+
+        st.markdown("---")  # Tambahkan pemisah visual
+        st.header("💡 Insight Otomatis (Analisis Ramalan)")
+
+        # Panggil fungsi 'pencari insight' kita
+        insights = generate_forecast_insights(forecast_df, last_date)
+
+        # Tampilkan dalam expander baru
+        with st.expander(
+            "Klik untuk melihat Temuan Kunci dari Model Ramalan", expanded=True
+        ):
+            if insights:
+                for insight in insights:
+                    st.markdown(f"&bull; {insight}")  # Tampilkan sebagai daftar
+            else:
+                st.info("Tidak ada insight otomatis yang dapat dibuat dari data ini.")
+
+        # #############################################################
+        # --- BATAS BLOK INSIGHT BARU ---
+        # #############################################################
+
     except Exception as e:
         st.error(f"Terjadi kesalahan saat melatih model Prophet: {e}")
         st.exception(e)
 
 
 def build_tab6_target(data_gmv):
-    """Menggambar Tab 6 (Pencapaian Target) dengan perbandingan ramalan Prophet."""
+    """Menggambar Tab 6 (Pencapaian Target) dengan perbandingan ramalan Prophet.
+    (VERSI 2.0 DENGAN INSIGHT INTERAKTIF)
+    """
     st.header("🎯 Pencapaian Target & Proyeksi (Dinamis)")
 
     if data_gmv is None or data_gmv.empty:
@@ -2703,6 +3659,9 @@ def build_tab6_target(data_gmv):
         st.metric(label=f"Target Anda Diatur ke:", value=format_rupiah(target_bulanan))
 
     st.markdown("---")
+    
+    # Buat kamus untuk menampung semua KPI yang akan dipakai insight
+    kpi_insight_dict = {}
 
     try:
         data_bulan_aktif = data_gmv[
@@ -2734,10 +3693,17 @@ def build_tab6_target(data_gmv):
             )
 
         sisa_hari = total_hari_bulan_ini - hari_berjalan
+        kpi_insight_dict["sisa_hari"] = sisa_hari # -> Simpan untuk insight
 
         penjualan_saat_ini = data_bulan_aktif["Total After Bill Discount"].sum()
-        pencapaian_persen = (penjualan_saat_ini / target_bulanan) * 100
-        rata_rata_harian_total = penjualan_saat_ini / hari_berjalan
+        pencapaian_persen = (
+            (penjualan_saat_ini / target_bulanan) if target_bulanan > 0 else 0
+        )
+        kpi_insight_dict["pencapaian_persen"] = pencapaian_persen # -> Simpan
+        
+        rata_rata_harian_total = (
+            penjualan_saat_ini / hari_berjalan if hari_berjalan > 0 else 0
+        )
         sales_dibutuhkan = target_bulanan - penjualan_saat_ini
 
         if sales_dibutuhkan < 0:
@@ -2769,6 +3735,9 @@ def build_tab6_target(data_gmv):
             avg_sales_weekday = 1
         if pd.isna(avg_sales_weekend) or avg_sales_weekend == 0:
             avg_sales_weekend = avg_sales_weekday
+        
+        kpi_insight_dict["avg_sales_weekday"] = avg_sales_weekday # -> Simpan
+        kpi_insight_dict["avg_sales_weekend"] = avg_sales_weekend # -> Simpan
 
         weekend_weight = avg_sales_weekend / avg_sales_weekday
 
@@ -2803,6 +3772,9 @@ def build_tab6_target(data_gmv):
             if pembagi > 0:
                 rdr_weekday = sales_dibutuhkan / pembagi
                 rdr_weekend = rdr_weekday * weekend_weight
+            
+            kpi_insight_dict["rdr_weekday"] = rdr_weekday # -> Simpan
+            kpi_insight_dict["rdr_weekend"] = rdr_weekend # -> Simpan
 
             try:
                 prophet_data = (
@@ -2816,37 +3788,33 @@ def build_tab6_target(data_gmv):
                     columns={"Sales Date In": "ds", "Total After Bill Discount": "y"},
                     inplace=True,
                 )
+                
+                ramalan_sisa_hari = get_prophet_projection(prophet_data, sisa_hari)
 
-                if len(prophet_data) >= 7:
-                    with st.spinner("Menjalankan model ramalan Prophet..."):
-                        model_prophet = Prophet(
-                            weekly_seasonality=True,
-                            daily_seasonality=False,
-                            changepoint_prior_scale=0.1,
-                        )
-                        model_prophet.fit(prophet_data)
-                        future_df_prophet = model_prophet.make_future_dataframe(
-                            periods=sisa_hari
-                        )
-                        forecast_df_prophet = model_prophet.predict(future_df_prophet)
-                        ramalan_sisa_hari = forecast_df_prophet.iloc[-sisa_hari:][
-                            "yhat"
-                        ].sum()
-                        proyeksi_prophet = penjualan_saat_ini + ramalan_sisa_hari
+                if ramalan_sisa_hari is not None:
+                    proyeksi_prophet = penjualan_saat_ini + ramalan_sisa_hari
                 else:
-                    proyeksi_prophet = proyeksi_akhir_bulan
+                    proyeksi_prophet = proyeksi_akhir_bulan 
+            
             except Exception as e_prophet:
-                st.warning(
-                    f"Gagal menjalankan ramalan Prophet (data mungkin kurang): {e_prophet}"
-                )
+                st.warning(f"Gagal memproses data untuk Prophet: {e_prophet}")
                 proyeksi_prophet = proyeksi_akhir_bulan
 
-        else:
+        else: 
             proyeksi_akhir_bulan = penjualan_saat_ini
-            proyeksi_prophet = penjualan_saat_ini
+            proyeksi_prophet = penjualan_saat_ini 
 
-        proyeksi_vs_target_persen = proyeksi_akhir_bulan / target_bulanan
+        proyeksi_vs_target_persen = (
+            (proyeksi_akhir_bulan / target_bulanan) if target_bulanan > 0 else 0
+        )
         kekurangan_proyeksi = target_bulanan - proyeksi_akhir_bulan
+        
+        # Simpan sisa data untuk insight
+        kpi_insight_dict["proyeksi_vs_target_persen"] = proyeksi_vs_target_persen
+        kpi_insight_dict["proyeksi_akhir_bulan"] = proyeksi_akhir_bulan
+        kpi_insight_dict["proyeksi_prophet"] = proyeksi_prophet
+        kpi_insight_dict["target_bulanan"] = target_bulanan
+
 
         if proyeksi_vs_target_persen > 1.05:
             status_color = "normal"
@@ -2860,12 +3828,14 @@ def build_tab6_target(data_gmv):
         st.exception(e)
         return
 
+    # --- Sisa kode UI (METRIK DAN GRAFIK) tidak berubah ---
+
     st.subheader("📈 Gambaran Besar (Pencapaian)")
 
     col1, col2, col3 = st.columns(3)
     col1.metric(
         label=f"Pencapaian per {max_date_in_selected_month.strftime('%d-%m-%Y')}",
-        value=f"{pencapaian_persen:,.1f}%",
+        value=f"{pencapaian_persen*100:,.1f}%",  # <-- Perbaikan kecil di sini
         help=f"{format_rupiah(penjualan_saat_ini)} dari {format_rupiah(target_bulanan)}",
     )
 
@@ -2884,7 +3854,7 @@ def build_tab6_target(data_gmv):
         col2.metric(
             label="Hasil Akhir Bulan (Selesai)",
             value=format_rupiah(penjualan_saat_ini),
-            delta=f"{pencapaian_persen:,.1f}% dari Target",
+            delta=f"{pencapaian_persen*100:,.1f}% dari Target",  # <-- Perbaikan kecil
             delta_color=status_color,
         )
         col3.metric(
@@ -2901,7 +3871,11 @@ def build_tab6_target(data_gmv):
     with st.container(border=True):
         col_p1, col_p2 = st.columns(2)
 
-        proyeksi_prophet_persen = proyeksi_prophet / target_bulanan
+        if target_bulanan > 0:
+            proyeksi_prophet_persen = proyeksi_prophet / target_bulanan
+        else:
+            proyeksi_prophet_persen = 0
+
         if proyeksi_prophet_persen > 1.05:
             prophet_color = "normal"
         elif proyeksi_prophet_persen >= 0.98:
@@ -2958,7 +3932,7 @@ def build_tab6_target(data_gmv):
 
     try:
         st.subheader("Grafik 1: Tren Penjualan & Target Sisa Bulan")
-
+        
         actual_data_df = (
             daily_sales_agg.groupby(daily_sales_agg["Sales Date In"].dt.date)[
                 "Total After Bill Discount"
@@ -2994,7 +3968,7 @@ def build_tab6_target(data_gmv):
             st.write(
                 "Grafik ini menunjukkan penjualan aktual Anda (biru) selama bulan yang telah selesai."
             )
-
+        
         line_chart = (
             alt.Chart(plot_df_1)
             .mark_line(point=True)
@@ -3014,7 +3988,7 @@ def build_tab6_target(data_gmv):
         st.altair_chart(line_chart, use_container_width=True)
 
         st.subheader("Grafik 2: Diagnostik Performa Rata-rata vs. Target")
-
+        
         daily_sales_with_dayname = (
             data_bulan_aktif.groupby(
                 [data_bulan_aktif["Sales Date In"].dt.date, "Nama Hari"]
@@ -3053,17 +4027,10 @@ def build_tab6_target(data_gmv):
 
         plot_df_2 = pd.concat([avg_sales_by_day, target_per_hari_df])
 
-        # #################################################################
-        # --- PERBAIKAN 1: Hapus .properties() dari base chart ---
-        base = (
-            alt.Chart(plot_df_2).encode(
-                x=alt.X("Nama Hari:N", title="Hari", sort=day_sort_order),
-                y=alt.Y("Jumlah:Q", title="Penjualan (Rp)"),
-            )
-            # .properties(padding={"top": 20}) <-- DIHAPUS DARI SINI
+        base = alt.Chart(plot_df_2).encode(
+            x=alt.X("Nama Hari:N", title="Hari", sort=day_sort_order),
+            y=alt.Y("Jumlah:Q", title="Penjualan (Rp)"),
         )
-        # --- BATAS PERBAIKAN 1 ---
-        # #################################################################
 
         bar_chart = (
             base.transform_filter(alt.datum["Tipe"] == "1 - Rata-rata Aktual")
@@ -3097,26 +4064,54 @@ def build_tab6_target(data_gmv):
                 "Grafik ini menampilkan performa rata-rata Anda per hari (Bars) untuk bulan yang telah selesai."
             )
 
-        # #################################################################
-        # --- PERBAIKAN 2: Gabungkan dulu, baru tambahkan .properties() ---
         combined_chart = bar_chart + line_chart_target
 
         st.altair_chart(
-            combined_chart.properties(
-                padding={"top": 20}
-            ),  # <-- PADDING DITAMBAHKAN DI SINI
+            combined_chart.properties(padding={"top": 20}),
             use_container_width=True,
         )
-        # --- BATAS PERBAIKAN 2 ---
-        # #################################################################
 
     except Exception as e:
         st.error(f"Gagal membuat grafik tren harian: {e}")
         st.exception(e)
-
+    
+    
+    # #############################################################
+    # --- BLOK INSIGHT BARU DITEMPATKAN DI SINI (PALING BAWAH) ---
+    # #############################################################
+    
+    st.markdown("---") # Tambahkan pemisah visual
+    st.header("💡 Insight Otomatis (Analisis Target)")
+    
+    # Panggil fungsi 'pencari insight' kita
+    # Kita gunakan kamus KPI yang sudah kita kumpulkan
+    insights = generate_target_insights(kpi_insight_dict)
+    
+    # Tampilkan dalam expander baru
+    with st.expander("Klik untuk melihat Rangkuman Rencana Aksi", expanded=True):
+        if insights:
+            # Loop melalui daftar kamus insight
+            for insight in insights:
+                # Periksa 'type' dan panggil fungsi streamlit yang sesuai
+                if insight['type'] == 'success':
+                    st.success(insight['text'], icon="🎉")
+                elif insight['type'] == 'warning':
+                    st.warning(insight['text'], icon="💡")
+                elif insight['type'] == 'error':
+                    st.error(insight['text'], icon="⚠️")
+                else: # 'info'
+                    st.info(insight['text'], icon="👍")
+        else:
+            st.info("Tidak ada insight otomatis yang dapat dibuat dari data ini.")
+    
+    # #############################################################
+    # --- BATAS BLOK INSIGHT BARU ---
+    # #############################################################
 
 def build_tab7_pelanggan(data_ulasan):
-    """Menggambar Tab 7 (Analisis Pelanggan) dari file ulasan."""
+    """Menggambar Tab 7 (Analisis Pelanggan) dari file ulasan.
+    (VERSI BARU DENGAN KOTAK INSIGHT DI BAWAH)
+    """
     st.header("❤️ Analisis Ulasan & Sentimen Pelanggan")
 
     if data_ulasan is None or data_ulasan.empty:
@@ -3179,7 +4174,7 @@ def build_tab7_pelanggan(data_ulasan):
     st.subheader("💭 Analisis Topik Kualitatif")
 
     POSITIVE_KEYWORDS = {
-        "Rasa Enak": ["enak", "nagih", "pas bumbunya", "oke banget"],
+        "Rasa Enak": ["enak", "nagih", "pas bumbunya", "oke banget", "lezat", "mantap"],
         "Fasilitas/Suasana": [
             "nyaman",
             "estetik",
@@ -3188,18 +4183,29 @@ def build_tab7_pelanggan(data_ulasan):
             "VIP",
             "karaoke",
             "lift",
+            "cozy",
         ],
-        "Porsi": ["porsi besar", "kenyang", "lumayan besar"],
-        "Pelayanan": ["ramah", "cepat", "baik"],
+        "Porsi": ["porsi besar", "kenyang", "lumayan besar", "banyak"],
+        "Pelayanan": ["ramah", "cepat", "baik", "sigap", "responsif"],
     }
 
     NEGATIVE_KEYWORDS = {
         "Harga": ["mahal", "overpriced", "pricey", "kemahalan", "ga sebanding"],
-        "Rasa Kurang": ["biasa aja", "kurang", "B aja", "ga extraordinary"],
-        "Porsi": ["porsi kecil", "sedikit", "ga rugi"],
-        "Pelayanan": ["lama", "lambat", "tidak ramah"],
+        "Rasa Kurang": ["biasa aja", "kurang", "B aja", "ga extraordinary", "hambar"],
+        "Porsi": ["porsi kecil", "sedikit", "ga rugi", "kurang banyak"],
+        "Pelayanan": ["lama", "lambat", "tidak ramah", "jutek", "lelet"],
+        "Rating 1 (Sangat Buruk)": [
+            "kecewa",
+            "parah",
+            "buruk",
+            "tidak akan kembali",
+            "kapok",
+        ],
     }
 
+    # Fungsi 'hitung_keyword' ini sekarang hanya ada di dalam Tab 7
+    # Ini lebih baik agar tidak bentrok dengan fungsi global
+    @st.cache_data
     def hitung_keyword(df_ulasan, keyword_dict):
         results = {}
         for category, keywords in keyword_dict.items():
@@ -3254,6 +4260,32 @@ def build_tab7_pelanggan(data_ulasan):
             with st.expander(f"**{row['Nama']}** - {row['Rating']}"):
                 st.write(row["Ulasan"])
 
+    # #############################################################
+    # --- BLOK INSIGHT BARU DITEMPATKAN DI SINI (PALING BAWAH) ---
+    # #############################################################
+
+    st.markdown("---")  # Tambahkan pemisah visual
+    st.header("💡 Insight Otomatis (Ulasan Pelanggan)")
+
+    # Panggil fungsi 'pencari insight' kita
+    insights = generate_review_insights(
+        total_ulasan, avg_rating, nps_score, df_positive_topics, df_negative_topics
+    )
+
+    # Tampilkan dalam expander baru
+    with st.expander(
+        "Klik untuk melihat Temuan Kunci dari Ulasan Pelanggan", expanded=True
+    ):
+        if insights:
+            for insight in insights:
+                st.markdown(f"&bull; {insight}")  # Tampilkan sebagai daftar
+        else:
+            st.info("Tidak ada insight otomatis yang dapat dibuat dari data ini.")
+
+    # #############################################################
+    # --- BATAS BLOK INSIGHT BARU ---
+    # #############################################################
+
 
 # #################################################################
 # --- BAGIAN 3.8: FUNGSI PEMBANGUN UI (TAB 8 - PEMBELIAN BARU) ---
@@ -3261,7 +4293,9 @@ def build_tab7_pelanggan(data_ulasan):
 
 
 def build_tab8_purchasing(filtered_purchase):
-    """Menggambar Tab 8 (Analisis Pembelian / Food Cost)."""
+    """Menggambar Tab 8 (Analisis Pembelian / Food Cost).
+    (VERSI BARU DENGAN KOTAK INSIGHT DI BAWAH)
+    """
     st.header("🛒 Analisis Biaya Pembelian (Cost Control)")
 
     if filtered_purchase is None:
@@ -3276,7 +4310,7 @@ def build_tab8_purchasing(filtered_purchase):
         )
         return
 
-    # 1. Panggil fungsi analisis
+    # 1. Panggil fungsi analisis (sudah di-cache)
     (total_cost, cost_by_category, cost_by_supplier, top_items, raw_data_filtered) = (
         analyze_purchase_data(filtered_purchase)
     )
@@ -3349,6 +4383,32 @@ def build_tab8_purchasing(filtered_purchase):
             use_container_width=True,
         )
 
+    # #############################################################
+    # --- BLOK INSIGHT BARU DITEMPATKAN DI SINI (PALING BAWAH) ---
+    # #############################################################
+
+    st.markdown("---")  # Tambahkan pemisah visual
+    st.header("💡 Insight Otomatis (Analisis Biaya)")
+
+    # Panggil fungsi 'pencari insight' kita
+    insights = generate_purchase_insights(
+        total_cost, cost_by_category, cost_by_supplier, top_items
+    )
+
+    # Tampilkan dalam expander baru
+    with st.expander(
+        "Klik untuk melihat Temuan Kunci dari Data Pembelian", expanded=True
+    ):
+        if insights:
+            for insight in insights:
+                st.markdown(f"&bull; {insight}")  # Tampilkan sebagai daftar
+        else:
+            st.info("Tidak ada insight otomatis yang dapat dibuat dari data ini.")
+
+    # #############################################################
+    # --- BATAS BLOK INSIGHT BARU ---
+    # #############################################################
+
 
 # def build_footer():
 #     """Menggambar footer."""
@@ -3379,7 +4439,7 @@ def build_footer():
                 Data Driven F&B Analyst Dashboard © 2025
             </div>
             <div class="links">
-                Developer: @ronihidayat
+                Dev @ronihidayat
                 <a href="https://api.whatsapp.com/message/542JTLNDT3HCO1?autoload=1&app_absent=0" target="_blank">Contact Me</a>
                 <a href="https://www.linkedin.com/in/roni-hidayat0692/" target="_blank">LinkedIn</a>
                 <a href="https://github.com/RONI1920" target="_blank">GitHub</a>
@@ -3499,7 +4559,7 @@ def main():
                     notice.style.opacity = '0';
                     
                     setTimeout(() => {
-                        notice.style.display = 'none';
+                    notice.style.display = 'none';
                     }, 500);
                 }, 5000); 
             });
@@ -3511,13 +4571,6 @@ def main():
         unsafe_allow_html=True,
     )
 
-
-# --- PERBAIKAN: Hanya satu blok 'if __name__ == "__main__":' ---
-if __name__ == "__main__":
-    # Muat CSS eksternal (jika ada)
-    load_css("style.css")
-    # Jalankan aplikasi utama
-    main()
 
 # --- PERBAIKAN: Hanya satu blok 'if __name__ == "__main__":' ---
 if __name__ == "__main__":
