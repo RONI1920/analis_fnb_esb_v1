@@ -9,6 +9,11 @@ from prophet.plot import plot_plotly, plot_components_plotly
 import re  # <-- Diperlukan untuk Tab 7
 import os
 import sqlite3
+from transformers import pipeline  # <-- BARU
+from bertopic import BERTopic  # <-- BARU
+from sklearn.feature_extraction.text import CountVectorizer  # <-- BARU
+
+# ... sisa impor Anda ...
 
 # -----------------------------
 
@@ -242,6 +247,194 @@ def get_prophet_projection(prophet_data, sisa_hari):
     except Exception as e:
         st.error(f"Gagal menjalankan ramalan Prophet: {e}", icon="🤖")
         return None
+
+
+# #################################################################
+# --- BAGIAN 1.X: FUNGSI HELPER NLP (BARU) ---
+# #################################################################
+
+
+@st.cache_resource(show_spinner="Memuat model sentimen AI...")
+def load_sentiment_model():
+    """
+    Memuat model Analisis Sentimen dari Hugging Face.
+    Model ini di-cache di resource agar tidak perlu dimuat ulang.
+    """
+    try:
+        # Model ini dilatih khusus untuk sentimen bahasa Indonesia
+        model_name = "mdhugol/indonesia-bert-sentiment-classification"
+        sentiment_task = pipeline(
+            "sentiment-analysis",
+            model=model_name,
+            tokenizer=model_name,
+            framework="pt",  # Tentukan framework (PyTorch)
+        )
+        return sentiment_task
+    except Exception as e:
+        st.error(f"Gagal memuat model sentimen: {e}. Pastikan 'torch' terinstal.")
+        return None
+
+
+@st.cache_data(show_spinner="Menjalankan analisis sentimen cerdas...")
+def run_sentiment_analysis(data_ulasan, _sentiment_model):
+    """
+    Menjalankan analisis sentimen CERDAS yang menggabungkan
+    Rating Bintang (data_ulasan) dengan Teks AI (_sentiment_model).
+    """
+    if _sentiment_model is None:
+        return None
+
+    if data_ulasan is None or data_ulasan.empty:
+        return pd.DataFrame(columns=["Ulasan", "Sentimen", "Skor Sentimen"])
+
+    # Peta translasi
+    label_map = {"LABEL_2": "positive", "LABEL_1": "neutral", "LABEL_0": "negative"}
+
+    ulasan_list = data_ulasan["Ulasan"].tolist()
+
+    try:
+        # 1. Jalankan Model AI untuk mendapatkan analisis teks
+        hasil_sentimen_ai = _sentiment_model(
+            ulasan_list, batch_size=8, truncation=True, max_length=512
+        )
+
+        df_hasil = data_ulasan.copy()
+
+        # 2. Ambil semua data yang kita butuhkan
+        raw_ai_labels = [hasil["label"] for hasil in hasil_sentimen_ai]
+        ai_scores = [hasil["score"] for hasil in hasil_sentimen_ai]
+        # Ambil rating bintang dari data asli
+        star_ratings = df_hasil["Rating_Clean"].tolist()
+
+        # 3. Terapkan "Logika Cerdas"
+        final_sentiments = []
+        for rating, ai_label in zip(star_ratings, raw_ai_labels):
+            # Terjemahkan label AI mentah (LABEL_2 -> positive)
+            ai_sentiment = label_map.get(ai_label, "neutral")
+
+            # --- ATURAN LOGIKA CERDAS DIMULAI ---
+
+            # ATURAN 1: Bintang 5 (Sangat Puas)
+            if rating == 5:
+                # Jika AI bilang negatif (sarkasme/keluhan), kita turunkan jadi Netral.
+                if ai_sentiment == "negative":
+                    final_sentiments.append("neutral")
+                # Jika tidak, kita percaya bintang 5 adalah Positif.
+                else:
+                    final_sentiments.append("positive")
+
+            # ATURAN 2: Bintang 4 (Puas)
+            elif rating == 4:
+                # Sama seperti bintang 5, keluhan kecil diturunkan jadi Netral.
+                if ai_sentiment == "negative":
+                    final_sentiments.append("neutral")
+                else:
+                    final_sentiments.append("positive")
+
+            # ATURAN 3: Bintang 1 atau 2 (Kecewa)
+            elif rating <= 2:
+                # Jika AI bilang positif (sarkasme aneh), kita paksa jadi Netral/Negatif.
+                if ai_sentiment == "positive":
+                    final_sentiments.append("neutral")
+                # Jika tidak, kita percaya bintang 1-2 adalah Negatif.
+                else:
+                    final_sentiments.append("negative")
+
+            # ATURAN 4: Bintang 3 (Netral)
+            elif rating == 3:
+                # Di sini kita 100% percaya pada AI.
+                # Jika Bintang 3 tapi teksnya memuji (positive), kita ikut positive.
+                # Jika Bintang 3 tapi teksnya mengeluh (negative), kita ikut negative.
+                final_sentiments.append(ai_sentiment)
+
+            else:
+                final_sentiments.append(ai_sentiment)  # Fallback
+
+        # --- ATURAN LOGIKA CERDAS SELESAI ---
+
+        df_hasil["Sentimen"] = final_sentiments
+        df_hasil["Skor Sentimen"] = ai_scores
+
+        return df_hasil
+
+    except Exception as e:
+        st.error(f"Error saat menjalankan sentimen cerdas: {e}")
+        df_error = data_ulasan.copy()
+        df_error["Sentimen"] = "unknown"
+        df_error["Skor Sentimen"] = 0.0
+        return df_error
+
+
+@st.cache_data(show_spinner="Menganalisis topik pelanggan (BERTopic)...")
+def run_topic_modeling(_data_ulasan):
+    """
+    Menjalankan BERTopic untuk menemukan topik tersembunyi.
+    """
+    if _data_ulasan is None or _data_ulasan.empty or len(_data_ulasan) < 15:
+        # BERTopic butuh data yang cukup untuk clustering
+        return None, None
+
+    ulasan_list = _data_ulasan["Ulasan"].tolist()
+
+    # 1. Hapus 'stop words' umum bahasa Indonesia
+    # Ini PENTING agar topik tidak didominasi kata "yang", "dan", "di", "enak", "banget"
+    # Kita bisa tambahkan kata-kata umum dari domain F&B
+    stop_words_indo = [
+        "saya",
+        "dan",
+        "di",
+        "ke",
+        "ini",
+        "itu",
+        "yang",
+        "tapi",
+        "untuk",
+        "dengan",
+        "tidak",
+        "enak",
+        "banget",
+        "sekali",
+        "rasa",
+        "rasanya",
+        "makan",
+        "minum",
+        "disini",
+        "aja",
+        "sih",
+        "nya",
+        "pas",
+        "buat",
+        "juga",
+        "dari",
+        "ada",
+        "lagi",
+        "ga",
+        "gak",
+        "gk",
+    ]
+    vectorizer = CountVectorizer(stop_words=stop_words_indo)
+
+    # 2. Inisialisasi BERTopic
+    topic_model = BERTopic(
+        language="multilingual",
+        vectorizer_model=vectorizer,
+        min_topic_size=5,  # Topik harus dibicarakan minimal 5x
+        verbose=False,
+    )
+
+    # 3. Latih model
+    try:
+        topics, probs = topic_model.fit_transform(ulasan_list)
+
+        # 4. Ambil hasil
+        # topic_info adalah DataFrame berisi daftar topik, kata kunci, dan jumlahnya
+        topic_info = topic_model.get_topic_info()
+
+        return topic_model, topic_info
+    except Exception as e:
+        # st.error(f"Gagal menjalankan Topic Modeling: {e}")
+        st.warning(f"Gagal membuat model topik (mungkin data terlalu sedikit): {e}")
+        return None, None
 
 
 @st.cache_data
@@ -4101,10 +4294,10 @@ def build_tab6_target(data_gmv):
 
 
 def build_tab7_pelanggan(data_ulasan):
-    """Menggambar Tab 7 (Analisis Pelanggan) dari file ulasan.
-    (VERSI BARU DENGAN KOTAK INSIGHT DI BAWAH)
     """
-    st.header("❤️ Analisis Ulasan & Sentimen Pelanggan")
+    Menggambar Tab 7 (Analisis Pelanggan) versi BARU dengan AI.
+    """
+    st.header("❤️ Analisis Ulasan & Sentimen Pelanggan (AI)")
 
     if data_ulasan is None or data_ulasan.empty:
         st.warning(
@@ -4112,176 +4305,130 @@ def build_tab7_pelanggan(data_ulasan):
         )
         return
 
-    st.subheader("📊 KPI Kuantitatif Pelanggan")
-    total_ulasan = len(data_ulasan)
-    avg_rating = data_ulasan["Rating_Clean"].mean()
-
-    promoters = len(data_ulasan[data_ulasan["Rating_Clean"] == 5])
-    passives = len(data_ulasan[data_ulasan["Rating_Clean"] == 4])
-    detractors = len(data_ulasan[data_ulasan["Rating_Clean"] <= 3])
-
-    nps_score = 0
-    if total_ulasan > 0:
-        nps_score = (promoters / total_ulasan) * 100 - (detractors / total_ulasan) * 100
-
-    kpi_col1, kpi_col2, kpi_col3 = st.columns(3)
-    kpi_col1.metric("💬 Total Ulasan Diterima", f"{total_ulasan} Ulasan")
-    kpi_col2.metric("⭐ Rata-rata Rating", f"{avg_rating:.1f} / 5.0")
-    kpi_col3.metric(
-        "📈 Estimasi NPS",
-        f"{nps_score:.1f}",
-        help="Promoters (Bintang 5) dikurangi Detractors (Bintang 1-3)",
+    # --- 1. JALANKAN ANALISIS SENTIMEN ---
+    st.subheader("🤖 Analisis Sentimen Otomatis")
+    st.info(
+        "Model AI menganalisis *konteks* ulasan untuk menentukan sentimen (Positif/Negatif/Netral), tidak hanya berdasarkan rating bintang."
     )
 
-    st.markdown("---")
+    # Muat model (di-cache)
+    sentiment_model = load_sentiment_model()
 
-    st.subheader("Grafik Distribusi Rating")
+    if sentiment_model is None:
+        st.error("Model sentimen gagal dimuat. Tab ini tidak dapat ditampilkan.")
+        return
 
-    rating_counts = (
-        data_ulasan["Rating_Clean"]
-        .value_counts()
-        .reset_index()
-        .rename(columns={"Rating_Clean": "Rating", "count": "Jumlah"})
-    )
+    # Jalankan analisis (di-cache)
+    df_sentimen = run_sentiment_analysis(data_ulasan, sentiment_model)
+    # Di dalam build_tab7_pelanggan
 
-    all_ratings = pd.DataFrame({"Rating": [1, 2, 3, 4, 5]})
-    rating_counts = pd.merge(
-        all_ratings, rating_counts, on="Rating", how="left"
-    ).fillna(0)
+    # --- TAMBAHKAN BARIS DEBUG INI ---
+    if "Sentimen" in df_sentimen.columns:
+        st.write("DEBUG: Label Mentah Ditemukan:", df_sentimen["Sentimen"].unique())
+    # --- BATAS BARIS DEBUG ---
 
-    chart_dist = create_vertical_bar_chart(
-        rating_counts,
-        "Rating",
-        "Jumlah",
-        "Rating Bintang",
-        "Jumlah Ulasan",
-        x_type="O",
-        sort_order=[1, 2, 3, 4, 5],
-    )
+    # Tampilkan KPI Sentimen
+    if not df_sentimen.empty and "Sentimen" in df_sentimen.columns:
 
-    chart_dist = chart_dist.configure_axisX(labelAngle=0)
-    st.altair_chart(chart_dist, use_container_width=True)
-    st.markdown("---")
-
-    st.subheader("💭 Analisis Topik Kualitatif")
-
-    POSITIVE_KEYWORDS = {
-        "Rasa Enak": ["enak", "nagih", "pas bumbunya", "oke banget", "lezat", "mantap"],
-        "Fasilitas/Suasana": [
-            "nyaman",
-            "estetik",
-            "bagus",
-            "bersih",
-            "VIP",
-            "karaoke",
-            "lift",
-            "cozy",
-        ],
-        "Porsi": ["porsi besar", "kenyang", "lumayan besar", "banyak"],
-        "Pelayanan": ["ramah", "cepat", "baik", "sigap", "responsif"],
-    }
-
-    NEGATIVE_KEYWORDS = {
-        "Harga": ["mahal", "overpriced", "pricey", "kemahalan", "ga sebanding"],
-        "Rasa Kurang": ["biasa aja", "kurang", "B aja", "ga extraordinary", "hambar"],
-        "Porsi": ["porsi kecil", "sedikit", "ga rugi", "kurang banyak"],
-        "Pelayanan": ["lama", "lambat", "tidak ramah", "jutek", "lelet"],
-        "Rating 1 (Sangat Buruk)": [
-            "kecewa",
-            "parah",
-            "buruk",
-            "tidak akan kembali",
-            "kapok",
-        ],
-    }
-
-    # Fungsi 'hitung_keyword' ini sekarang hanya ada di dalam Tab 7
-    # Ini lebih baik agar tidak bentrok dengan fungsi global
-    @st.cache_data
-    def hitung_keyword(df_ulasan, keyword_dict):
-        results = {}
-        for category, keywords in keyword_dict.items():
-            count = 0
-            for keyword in keywords:
-                # Menggunakan regex=True untuk pencarian kata
-                count += (
-                    df_ulasan["Ulasan"]
-                    .str.contains(keyword, case=False, regex=True)
-                    .sum()
-                )
-            results[category] = count
-        return (
-            pd.DataFrame.from_dict(results, orient="index", columns=["Jumlah"])
-            .reset_index()
-            .rename(columns={"index": "Topik"})
-            .sort_values(by="Jumlah", ascending=False)
+        # --- PERBAIKAN DI SINI ---
+        # Konversi kolom Sentimen ke huruf kecil untuk memastikan pencocokan
+        sentiment_counts = (
+            df_sentimen["Sentimen"].str.lower().value_counts(normalize=True)
         )
+        # --- BATAS PERBAIKAN ---
 
-    df_positive_topics = hitung_keyword(data_ulasan, POSITIVE_KEYWORDS)
-    df_negative_topics = hitung_keyword(data_ulasan, NEGATIVE_KEYWORDS)
+        # Ambil persentase (default 0 jika tidak ada)
+        # Kode di bawah ini sekarang akan bekerja dengan benar
+        pct_positive = sentiment_counts.get("positive", 0) * 100
+        pct_negative = sentiment_counts.get("negative", 0) * 100
+        pct_neutral = sentiment_counts.get("neutral", 0) * 100
 
-    col_pos, col_neg = st.columns(2)
-
-    with col_pos:
-        st.markdown("##### 👍 Topik Positif yang Paling Sering Disebut")
-        chart_pos = create_horizontal_bar_chart(
-            df_positive_topics, "Jumlah", "Topik", "Jumlah Penyebutan", "Topik Positif"
-        )
-        st.altair_chart(chart_pos, use_container_width=True)
-
-    with col_neg:
-        st.markdown("##### 👎 Topik Negatif (Keluhan) yang Paling Sering Disebut")
-        chart_neg = create_horizontal_bar_chart(
-            df_negative_topics, "Jumlah", "Topik", "Jumlah Penyebutan", "Topik Negatif"
-        )
-        st.altair_chart(chart_neg, use_container_width=True)
-
-    st.markdown("---")
-
-    st.subheader("🔍 Telusuri Ulasan Pelanggan")
-
-    filter_rating = st.selectbox(
-        "Tampilkan ulasan untuk rating:",
-        options=["Semua", 5, 4, 3, 2, 1],
-        format_func=lambda x: f"{x} Bintang" if isinstance(x, int) else "Semua Ulasan",
-    )
-
-    if filter_rating == "Semua":
-        filtered_reviews = data_ulasan
+        kpi_col1, kpi_col2, kpi_col3 = st.columns(3)
+        kpi_col1.metric("👍 Ulasan Positif (AI)", f"{pct_positive:.1f}%")
+        kpi_col2.metric("👎 Ulasan Negatif (AI)", f"{pct_negative:.1f}%")
+        kpi_col3.metric("😐 Ulasan Netral (AI)", f"{pct_neutral:.1f}%")
     else:
-        filtered_reviews = data_ulasan[data_ulasan["Rating_Clean"] == filter_rating]
+        st.warning("Gagal menjalankan analisis sentimen pada data ulasan.")
+        return  # Hentikan jika sentimen gagal
 
-    st.write(f"Menampilkan {len(filtered_reviews)} dari {total_ulasan} ulasan:")
-    with st.container(height=400):
-        for _, row in filtered_reviews.iterrows():
-            with st.expander(f"**{row['Nama']}** - {row['Rating']}"):
-                st.write(row["Ulasan"])
+    st.markdown("---")
 
-    # #############################################################
-    # --- BLOK INSIGHT BARU DITEMPATKAN DI SINI (PALING BAWAH) ---
-    # #############################################################
-
-    st.markdown("---")  # Tambahkan pemisah visual
-    st.header("💡 Insight Otomatis (Ulasan Pelanggan)")
-
-    # Panggil fungsi 'pencari insight' kita
-    insights = generate_review_insights(
-        total_ulasan, avg_rating, nps_score, df_positive_topics, df_negative_topics
+    # --- 2. JALANKAN TOPIC MODELING ---
+    st.subheader("📊 Analisis Topik Otomatis (BERTopic)")
+    st.info(
+        "Model AI membaca semua ulasan dan mengelompokkannya ke dalam topik-topik yang paling sering dibicarakan secara otomatis."
     )
 
-    # Tampilkan dalam expander baru
-    with st.expander(
-        "Klik untuk melihat Temuan Kunci dari Ulasan Pelanggan", expanded=True
-    ):
-        if insights:
-            for insight in insights:
-                st.markdown(f"&bull; {insight}")  # Tampilkan sebagai daftar
-        else:
-            st.info("Tidak ada insight otomatis yang dapat dibuat dari data ini.")
+    # Jalankan BERTopic (di-cache)
+    topic_model, topic_info = run_topic_modeling(df_sentimen)
 
-    # #############################################################
-    # --- BATAS BLOK INSIGHT BARU ---
-    # #############################################################
+    if topic_model and topic_info is not None:
+        # Tampilkan Grafik Topik
+        # BERTopic menghasilkan grafik Plotly interaktif
+        st.write("Visualisasi Sebaran Topik:")  # <-- Saya tambahkan judul kecil
+        try:
+            fig_topics = topic_model.visualize_topics()
+            fig_topics.update_layout(
+                width=1000,  # Atur lebar
+                height=800,  # Atur tinggi
+                margin=dict(l=50, r=50, t=50, b=50),
+                # font=dict(size=12) # Sesuaikan jika perlu
+            )
+            st.plotly_chart(fig_topics, use_container_width=False)
+        except Exception as e:
+            st.warning(f"Gagal membuat visualisasi utama topik: {e}")
+
+        # --- TAMBAHKAN INI UNTUK VISUALISASI BARCHART ---
+        st.write("Kata Kunci Topik dalam Bagan Batang:")
+        try:
+            # Ambil beberapa topik teratas (misal 5-10 topik yang paling banyak dibicarakan)
+            # Filter -1 (outlier) topic
+            main_topics = (
+                topic_info[topic_info["Topic"] != -1]
+                .sort_values("Count", ascending=False)
+                .head(10)["Topic"]
+                .tolist()
+            )
+
+            if main_topics:
+                fig_barchart = topic_model.visualize_barchart(
+                    topics=main_topics,
+                    n_words=8,  # Tampilkan 8 kata kunci teratas per topik
+                    height=400,  # Tinggi setiap barchart
+                )
+                # Anda mungkin perlu menyesuaikan font di sini juga
+                fig_barchart.update_layout(font=dict(size=12))
+                st.plotly_chart(fig_barchart, use_container_width=True)
+            else:
+                st.info(
+                    "Tidak ada topik yang cukup signifikan untuk ditampilkan dalam bagan batang."
+                )
+
+        except Exception as e:
+            st.error(f"Gagal membuat visualisasi barchart topik: {e}")
+
+        # <-- PERBAIKAN DI SINI: Blok ini digeser ke kiri (un-indented)
+        # Tampilkan DataFrame Topik
+        with st.expander("Lihat Rincian Data Topik"):
+            st.write(
+                "Daftar topik yang ditemukan (Topik -1 adalah 'Outlier' atau ulasan umum yang tidak masuk kategori manapun):"
+            )
+            # Tampilkan kata kunci untuk setiap topik
+            topic_df_display = topic_info[["Topic", "Count", "Name", "Representation"]]
+            topic_df_display = topic_df_display.rename(
+                columns={
+                    "Topic": "ID Topik",
+                    "Count": "Jumlah Ulasan",
+                    "Name": "Nama Topik (Otomatis)",
+                    "Representation": "Kata Kunci Utama",
+                }
+            )
+            st.dataframe(topic_df_display, use_container_width=True)
+
+    st.markdown("---")
+
+    # --- 3. TAMPILKAN ULASAN DENGAN SENTIMEN BARU ---
+    st.subheader("🔍 Telusuri Ulasan (dengan Sentimen AI)")
 
 
 # #################################################################
