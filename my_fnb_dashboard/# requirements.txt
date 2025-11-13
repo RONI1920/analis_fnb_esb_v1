@@ -1,0 +1,10 @@
+# requirements.txt
+
+streamlit
+pandas
+openpyxl
+altair
+numpy
+prophet
+plotly
+mlxtend
