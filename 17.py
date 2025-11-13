@@ -1096,7 +1096,7 @@ def generate_gmv_insights(
 # #################################################################
 
 
-# --- HAPUS @st.cache_data DARI SINI ---
+@st.cache_data
 def load_data_gmv(uploaded_file, use_db=False):
     """Memuat dan membersihkan data GMV (File 1) DAN membaca headernya."""
 
@@ -1219,7 +1219,7 @@ def load_data_gmv(uploaded_file, use_db=False):
     return df_data, company_name, period_str, branch_name_header
 
 
-# --- HAPUS @st.cache_data DARI SINI ---
+@st.cache_data
 def load_data_purchase(uploaded_file, use_db=False):
     """Memuat dan membersihkan data Laporan Pembelian (File 5)."""
     if use_db and uploaded_file is None:
@@ -1304,6 +1304,7 @@ def load_data_purchase(uploaded_file, use_db=False):
     return df
 
 
+@st.cache_data
 def load_cogs_data(uploaded_file, use_db=False):
     """Memuat dan membersihkan data COGS (File 2)."""
 
@@ -1375,6 +1376,7 @@ def load_cogs_data(uploaded_file, use_db=False):
     return df
 
 
+@st.cache_data
 def load_data_waiter(uploaded_file, use_db=False):
     """Memuat dan membersihkan data Waiter (File 3)."""
 
@@ -1437,6 +1439,7 @@ def load_data_waiter(uploaded_file, use_db=False):
     return df
 
 
+@st.cache_data
 def load_data_ulasan(uploaded_file, use_db=False):
     """Memuat dan membersihkan data Ulasan (File 4)."""
 
@@ -4142,7 +4145,7 @@ def build_tab6_target(data_gmv):
         # --- PERBAIKAN SINTAKS DI SINI ---
         # #############################################################
 
-        col_a.metric(  # 1. Hapus () dari sini
+        col_a.metric(
             label="Target Harian Sisa (Weekday)",
             value=format_rupiah(rdr_weekday),
             delta=f"vs Rata-rata: {format_rupiah(avg_sales_weekday)}",
@@ -4152,7 +4155,7 @@ def build_tab6_target(data_gmv):
                 else ("normal" if rdr_weekday > 0 else "off")
             ),
             help="Penjualan harian (Sen-Kam) yang dibutuhkan untuk mencapai target.",
-        )  # 3. Pindahkan ) ke sini
+        )
 
         # #############################################################
         # --- BATAS PERBAIKAN ---
