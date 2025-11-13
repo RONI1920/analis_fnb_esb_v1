@@ -26,6 +26,6 @@ A Streamlit app where you can compare how different stocks fare against each oth
 
 3. Start the app:
 
-    ```sh
-    $ streamlit run streamlit_app.py
-    ```
+   ```sh
+   $ streamlit run streamlit_app.py
+   ```

@@ -9,11 +9,12 @@ from prophet.plot import plot_plotly, plot_components_plotly
 import re  # <-- Diperlukan untuk Tab 7
 import os
 import sqlite3
-from transformers import pipeline  # <-- BARU
-from bertopic import BERTopic  # <-- BARU
-from sklearn.feature_extraction.text import CountVectorizer  # <-- BARU
+import plotly.express as px  # <-- DIGANTI: Ditambahkan untuk grafik baru
+import plotly.graph_objects as go  # <-- DIGANTI: Ditambahkan untuk grafik baru
 
-# ... sisa impor Anda ...
+# Tambahkan ini di bagian import paling atas
+from mlxtend.frequent_patterns import apriori, association_rules
+from mlxtend.preprocessing import TransactionEncoder
 
 # -----------------------------
 
@@ -249,194 +250,6 @@ def get_prophet_projection(prophet_data, sisa_hari):
         return None
 
 
-# #################################################################
-# --- BAGIAN 1.X: FUNGSI HELPER NLP (BARU) ---
-# #################################################################
-
-
-@st.cache_resource(show_spinner="Memuat model sentimen AI...")
-def load_sentiment_model():
-    """
-    Memuat model Analisis Sentimen dari Hugging Face.
-    Model ini di-cache di resource agar tidak perlu dimuat ulang.
-    """
-    try:
-        # Model ini dilatih khusus untuk sentimen bahasa Indonesia
-        model_name = "mdhugol/indonesia-bert-sentiment-classification"
-        sentiment_task = pipeline(
-            "sentiment-analysis",
-            model=model_name,
-            tokenizer=model_name,
-            framework="pt",  # Tentukan framework (PyTorch)
-        )
-        return sentiment_task
-    except Exception as e:
-        st.error(f"Gagal memuat model sentimen: {e}. Pastikan 'torch' terinstal.")
-        return None
-
-
-@st.cache_data(show_spinner="Menjalankan analisis sentimen cerdas...")
-def run_sentiment_analysis(data_ulasan, _sentiment_model):
-    """
-    Menjalankan analisis sentimen CERDAS yang menggabungkan
-    Rating Bintang (data_ulasan) dengan Teks AI (_sentiment_model).
-    """
-    if _sentiment_model is None:
-        return None
-
-    if data_ulasan is None or data_ulasan.empty:
-        return pd.DataFrame(columns=["Ulasan", "Sentimen", "Skor Sentimen"])
-
-    # Peta translasi
-    label_map = {"LABEL_2": "positive", "LABEL_1": "neutral", "LABEL_0": "negative"}
-
-    ulasan_list = data_ulasan["Ulasan"].tolist()
-
-    try:
-        # 1. Jalankan Model AI untuk mendapatkan analisis teks
-        hasil_sentimen_ai = _sentiment_model(
-            ulasan_list, batch_size=8, truncation=True, max_length=512
-        )
-
-        df_hasil = data_ulasan.copy()
-
-        # 2. Ambil semua data yang kita butuhkan
-        raw_ai_labels = [hasil["label"] for hasil in hasil_sentimen_ai]
-        ai_scores = [hasil["score"] for hasil in hasil_sentimen_ai]
-        # Ambil rating bintang dari data asli
-        star_ratings = df_hasil["Rating_Clean"].tolist()
-
-        # 3. Terapkan "Logika Cerdas"
-        final_sentiments = []
-        for rating, ai_label in zip(star_ratings, raw_ai_labels):
-            # Terjemahkan label AI mentah (LABEL_2 -> positive)
-            ai_sentiment = label_map.get(ai_label, "neutral")
-
-            # --- ATURAN LOGIKA CERDAS DIMULAI ---
-
-            # ATURAN 1: Bintang 5 (Sangat Puas)
-            if rating == 5:
-                # Jika AI bilang negatif (sarkasme/keluhan), kita turunkan jadi Netral.
-                if ai_sentiment == "negative":
-                    final_sentiments.append("neutral")
-                # Jika tidak, kita percaya bintang 5 adalah Positif.
-                else:
-                    final_sentiments.append("positive")
-
-            # ATURAN 2: Bintang 4 (Puas)
-            elif rating == 4:
-                # Sama seperti bintang 5, keluhan kecil diturunkan jadi Netral.
-                if ai_sentiment == "negative":
-                    final_sentiments.append("neutral")
-                else:
-                    final_sentiments.append("positive")
-
-            # ATURAN 3: Bintang 1 atau 2 (Kecewa)
-            elif rating <= 2:
-                # Jika AI bilang positif (sarkasme aneh), kita paksa jadi Netral/Negatif.
-                if ai_sentiment == "positive":
-                    final_sentiments.append("neutral")
-                # Jika tidak, kita percaya bintang 1-2 adalah Negatif.
-                else:
-                    final_sentiments.append("negative")
-
-            # ATURAN 4: Bintang 3 (Netral)
-            elif rating == 3:
-                # Di sini kita 100% percaya pada AI.
-                # Jika Bintang 3 tapi teksnya memuji (positive), kita ikut positive.
-                # Jika Bintang 3 tapi teksnya mengeluh (negative), kita ikut negative.
-                final_sentiments.append(ai_sentiment)
-
-            else:
-                final_sentiments.append(ai_sentiment)  # Fallback
-
-        # --- ATURAN LOGIKA CERDAS SELESAI ---
-
-        df_hasil["Sentimen"] = final_sentiments
-        df_hasil["Skor Sentimen"] = ai_scores
-
-        return df_hasil
-
-    except Exception as e:
-        st.error(f"Error saat menjalankan sentimen cerdas: {e}")
-        df_error = data_ulasan.copy()
-        df_error["Sentimen"] = "unknown"
-        df_error["Skor Sentimen"] = 0.0
-        return df_error
-
-
-@st.cache_data(show_spinner="Menganalisis topik pelanggan (BERTopic)...")
-def run_topic_modeling(_data_ulasan):
-    """
-    Menjalankan BERTopic untuk menemukan topik tersembunyi.
-    """
-    if _data_ulasan is None or _data_ulasan.empty or len(_data_ulasan) < 15:
-        # BERTopic butuh data yang cukup untuk clustering
-        return None, None
-
-    ulasan_list = _data_ulasan["Ulasan"].tolist()
-
-    # 1. Hapus 'stop words' umum bahasa Indonesia
-    # Ini PENTING agar topik tidak didominasi kata "yang", "dan", "di", "enak", "banget"
-    # Kita bisa tambahkan kata-kata umum dari domain F&B
-    stop_words_indo = [
-        "saya",
-        "dan",
-        "di",
-        "ke",
-        "ini",
-        "itu",
-        "yang",
-        "tapi",
-        "untuk",
-        "dengan",
-        "tidak",
-        "enak",
-        "banget",
-        "sekali",
-        "rasa",
-        "rasanya",
-        "makan",
-        "minum",
-        "disini",
-        "aja",
-        "sih",
-        "nya",
-        "pas",
-        "buat",
-        "juga",
-        "dari",
-        "ada",
-        "lagi",
-        "ga",
-        "gak",
-        "gk",
-    ]
-    vectorizer = CountVectorizer(stop_words=stop_words_indo)
-
-    # 2. Inisialisasi BERTopic
-    topic_model = BERTopic(
-        language="multilingual",
-        vectorizer_model=vectorizer,
-        min_topic_size=5,  # Topik harus dibicarakan minimal 5x
-        verbose=False,
-    )
-
-    # 3. Latih model
-    try:
-        topics, probs = topic_model.fit_transform(ulasan_list)
-
-        # 4. Ambil hasil
-        # topic_info adalah DataFrame berisi daftar topik, kata kunci, dan jumlahnya
-        topic_info = topic_model.get_topic_info()
-
-        return topic_model, topic_info
-    except Exception as e:
-        # st.error(f"Gagal menjalankan Topic Modeling: {e}")
-        st.warning(f"Gagal membuat model topik (mungkin data terlalu sedikit): {e}")
-        return None, None
-
-
 @st.cache_data
 def calculate_sales_kpi(df):
     """Menghitung KPI Penjualan Utama."""
@@ -564,6 +377,22 @@ def get_menu_performance(df):
     # --- BATAS PERBAIKAN ---
     # #################################################################
 
+    # #################################################################
+    # <-- PERBAIKAN DI SINI: Filter Nama Item Spesifik (Ocha, dll.) -->
+    #
+    # Filter item spesifik yang tidak ingin dianggap sebagai menu utama
+    # Kita gunakan regex dengan | (ATAU)
+    filter_regex_items = r"Ocha|Refill|Mineral Water"
+
+    if "Menu" in menu_sales.columns:
+        menu_sales = menu_sales[
+            ~menu_sales["Menu"].str.contains(
+                filter_regex_items, na=False, case=False, regex=True
+            )
+        ]
+    # <-- BATAS PERBAIKAN -->
+    # #################################################################
+
     # --- Data untuk Drill-Down & Kategori Statis ---
     # (Sisa kode di bawah ini tidak perlu diubah)
 
@@ -590,6 +419,7 @@ def get_menu_performance(df):
         )
 
     # --- Data untuk Expander Top 10 ---
+    # menu_sales di sini sudah bersih dari 'Ocha' dan 'Mineral Water'
     top_selling_items = menu_sales.groupby("Menu")["Qty"].sum().nlargest(10)
     top_grossing_items = (
         menu_sales.groupby("Menu")["Total Nett Sales"].sum().nlargest(10)
@@ -853,127 +683,118 @@ def get_waiter_performance(df):
     return waiter_perf.nlargest(10, "Total_Penjualan")
 
 
+# #################################################################
+# --- BAGIAN GRAFIK YANG DIMODIFIKASI (MENGGUNAKAN PLOTLY) ---
+# #################################################################
+
+
 def create_horizontal_bar_chart(data, x_col, y_col, x_title, y_title, sort_order="-x"):
     """
-    Membuat grafik batang horizontal Altair (Sumbu X di atas, label rapi).
-    VERSI PROFESIONAL: dengan label data DI LUAR batang (Putih) dan TINGGI OTOMATIS (33px).
+    Membuat grafik batang horizontal Plotly Express yang profesional.
     """
+    # Tentukan urutan sorting
+    if sort_order == "-x":
+        sort_ascending = False
+    else:  # asumsikan "x"
+        sort_ascending = True
 
-    PROFESSIONAL_COLOR = "#4A90E2"
+    # Sort data untuk memastikan urutan bar di Plotly
+    data_sorted = data.sort_values(by=x_col, ascending=sort_ascending)
 
-    try:
-        num_bars = len(data[y_col].unique())
-    except KeyError:
-        num_bars = 10
-
-    # Tinggi 33px per batang + 40px padding
-    chart_height = max(num_bars * 33 + 40, 250)
-
-    base_chart = alt.Chart(data).encode(
-        x=alt.X(
-            f"{x_col}:Q",
-            title=x_title,
-            axis=alt.Axis(
-                orient="top",
-                format="~s",
-                domain=False,
-                grid=True,
-                ticks=False,
-                labelPadding=3,
-            ),
-        ),
-        y=alt.Y(
-            f"{y_col}:N",
-            title=y_title,
-            sort=sort_order,
-            axis=alt.Axis(labelLimit=300, domain=False, ticks=False, labelPadding=5),
-        ),
-        tooltip=[
-            alt.Tooltip(y_col, title=y_title),
-            alt.Tooltip(x_col, title=x_title, format=",.0f"),
-        ],
+    # Buat grafik
+    fig = px.bar(
+        data_sorted,
+        x=x_col,
+        y=y_col,
+        orientation="h",
+        labels={x_col: x_title, y_col: ""},  # Sembunyikan judul sumbu Y
+        title=y_title,  # Gunakan y_title sebagai judul utama grafik
+        color=x_col,
+        color_continuous_scale=px.colors.sequential.Blues,  # Skala warna profesional
+        template="plotly_white",
+        text=x_col,  # Tambahkan label data
     )
 
-    bar_layer = base_chart.mark_bar(color=PROFESSIONAL_COLOR)
-
-    text_layer = base_chart.mark_text(
-        align="left",
-        baseline="middle",
-        dx=5,
-        fontSize=11,
-        color="white",
-        clip=False,  # <-- Ini PENTING agar teks tidak terpotong
-    ).encode(text=alt.Text(f"{x_col}:Q", format="~s"), color=alt.value("white"))
-
-    # #################################################################
-    # --- PERBAIKAN DI SINI: Menonaktifkan .interactive() ---
-    final_chart = (
-        (bar_layer + text_layer).properties(height=chart_height, padding={"top": 0})
-        # .interactive() # <-- Dinonaktifkan sesuai permintaan
+    fig.update_layout(
+        xaxis_title=x_title,
+        yaxis_title="",  # Pastikan kosong
+        xaxis_side="top",  # Pindahkan sumbu X ke atas
+        coloraxis_showscale=False,  # Sembunyikan color bar
+        title_x=0.01,  # Judul rata kiri
+        title_font_size=18,
+        margin=dict(l=0, r=20, t=60, b=20),  # Margin
+        yaxis=(
+            {"categoryorder": "total ascending"}
+            if sort_ascending
+            else {"categoryorder": "total descending"}
+        ),
     )
-    # --- BATAS PERBAIKAN ---
-    # #################################################################
 
-    return final_chart
+    # Format label data dan tooltip
+    fig.update_traces(
+        texttemplate="%{x:.2s}",  # Format label (misal: 1.5M, 250k)
+        textposition="outside",
+        hovertemplate=f"<b>%{{y}}</b><br>{x_title}: %{{x:,.0f}}<extra></extra>",
+    )
+
+    # Hapus grid y-axis dan atur grid x-axis
+    fig.update_yaxes(showgrid=False)
+    fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor="#E5E5E5")
+
+    return fig  # Kembalikan objek fig Plotly
 
 
 def create_vertical_bar_chart(
     data, x_col, y_col, x_title, y_title, x_type="N", sort_order=None
 ):
     """
-    Membuat grafik batang vertikal Altair.
-    VERSI PROFESIONAL: dengan label data di LUAR batang (Putih untuk Tema Gelap).
+    Membuat grafik batang vertikal Plotly Express yang profesional.
     """
 
-    # --- Layer 1: Batang (Bars) ---
-    base_chart = alt.Chart(data).encode(
-        x=alt.X(
-            f"{x_col}:{x_type}",
-            title=x_title,
-            sort=sort_order,
-            axis=alt.Axis(
-                labelLimit=300, domain=False, ticks=False, labelPadding=5, labelAngle=0
-            ),
-        ),
-        y=alt.Y(
-            f"{y_col}:Q",
-            title=y_title,
-            axis=alt.Axis(
-                domain=False, grid=True, ticks=False, labelPadding=5, format="~s"
-            ),
-        ),
-        color=alt.Color(
-            f"{x_col}:{x_type}",
-            title=x_title,
-            legend=None,
-            scale=alt.Scale(range="category"),
-        ),
-        tooltip=[
-            alt.Tooltip(x_col, title=x_title),
-            alt.Tooltip(y_col, title=y_title, format=",.0f"),
-        ],
+    # Siapkan urutan kategori jika ada
+    category_orders = {}
+    if sort_order:
+        category_orders[x_col] = sort_order
+
+    fig = px.bar(
+        data,
+        x=x_col,
+        y=y_col,
+        title=f"{y_title} vs {x_title}",
+        labels={x_col: x_title, y_col: y_title},
+        color=x_col,  # Warnai berdasarkan kategori x
+        template="plotly_white",
+        category_orders=category_orders,
+        text=y_col,  # Tambahkan label data
     )
 
-    bar_layer = base_chart.mark_bar()
-
-    # --- Layer 2: Teks (Label Data) ---
-    text_layer = base_chart.mark_text(
-        align="center",
-        baseline="bottom",  # <-- 'bottom' (rata bawah)
-        dy=-5,  # <-- '-5' (geser 5px ke ATAS dari atas batang)
-        fontSize=11,
-        color="white",  # <-- UBAH: 'white' (Sesuai tema gelap Anda)
-    ).encode(
-        text=alt.Text(f"{y_col}:Q", format="~s"),
-        color=alt.value("white"),  # <-- UBAH: Paksa warna jadi putih
+    fig.update_layout(
+        xaxis_title=x_title,
+        yaxis_title=y_title,
+        showlegend=False,  # Legenda tidak perlu jika diwarnai by x
+        title_x=0.01,  # Judul rata kiri
+        title_font_size=18,
+        margin=dict(l=0, r=0, t=60, b=0),
+        yaxis_tickformat=".2s",  # Format sumbu Y (misal: 1.5M, 250k)
     )
 
-    # --- Gabungkan dan atur properti ---
-    final_chart = (bar_layer + text_layer).properties(
-        padding={"top": 20}
-    )  # .interactive()
+    # Format label data dan tooltip
+    fig.update_traces(
+        texttemplate="%{y:.2s}",  # Format label (misal: 1.5M, 250k)
+        textposition="outside",
+        hovertemplate=f"<b>%{{x}}</b><br>{y_title}: %{{y:,.0f}}<extra></extra>",
+    )
 
-    return final_chart
+    # Hapus grid x-axis dan atur grid y-axis
+    fig.update_xaxes(showgrid=False)
+    fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor="#E5E5E5")
+
+    return fig  # Kembalikan objek fig Plotly
+
+
+# #################################################################
+# --- BATAS MODIFIKASI FUNGSI GRAFIK ---
+# #################################################################
 
 
 def calculate_delta(value_A, value_B, formatter_func, higher_is_better=True):
@@ -1650,7 +1471,7 @@ def build_sidebar():
             <div style='text-align: center; margin-bottom: 20px;'>
                 <h2>DATA DRIVEN</h2>
                 <h2>SPECIALYST FNB</h2>
-                <p style='font-size: 0.9rem; color: #aaaaaa; margin-top: 5px;'>Developer: @ronihidayat</p>
+                <p style='font-size: 0.9rem; color: #aaaaaa; margin-top: 5px;'> </p>
             </div>
             """,
             unsafe_allow_html=True,
@@ -1971,7 +1792,6 @@ def build_global_filters(data_gmv, data_cogs, data_waiter, data_purchase):
 
         # Jika filter_type == "Semua Periode", kita tidak melakukan apa-apa.
 
-        st.markdown("---")
 
     elif (
         data_gmv is None
@@ -1979,7 +1799,6 @@ def build_global_filters(data_gmv, data_cogs, data_waiter, data_purchase):
         and data_waiter is None
         and data_purchase is None
     ):
-        st.info("ℹ️ Upload file di sidebar untuk memulai analisis.")
         st.markdown("---")
 
     # Kembalikan data yang SUDAH DIFILTER
@@ -2139,7 +1958,7 @@ def build_tab1_sales(filtered_gmv):
                             x=alt.X(
                                 "Qty:Q",
                                 title="Total Kuantiti Terjual",
-                                axis=alt.Axis(orient="top", format=".0f"),
+                                axis=alt.Axis(orient="top"),
                             ),
                             y=alt.Y(
                                 "Menu Category:N",
@@ -2175,7 +1994,7 @@ def build_tab1_sales(filtered_gmv):
                             x=alt.X(
                                 "Qty:Q",
                                 title="Total Kuantiti Terjual",
-                                axis=alt.Axis(orient="top", format=".0f"),
+                                axis=alt.Axis(orient="top"),
                             ),
                             y=alt.Y(
                                 "Menu:N",
@@ -2196,6 +2015,7 @@ def build_tab1_sales(filtered_gmv):
                         chart_kategori, chart_detail, spacing=40
                     ).resolve_scale(y="independent")
 
+                    # INI ADALAH GRAFIK ALTAIR KUSTOM ANDA, JADI KITA BIARKAN
                     st.altair_chart(combined_chart, use_container_width=True)
 
             elif "Menu Category" in filtered_gmv.columns:
@@ -2246,18 +2066,24 @@ def build_tab1_sales(filtered_gmv):
                 col11, col12 = st.columns(2)
                 with col11:
                     chart = create_horizontal_bar_chart(
-                        top_selling, "Qty", "Menu", "Kuantitas Terjual", "Menu"
+                        top_selling,
+                        "Qty",
+                        "Menu",
+                        "Kuantitas Terjual",
+                        "Menu Terlaris (by Kuantitas)",
                     )
-                    st.altair_chart(chart, use_container_width=True)
+                    # --- DIGANTI ---
+                    st.plotly_chart(chart, use_container_width=True)
                 with col12:
                     chart = create_horizontal_bar_chart(
                         top_grossing,
                         "Total Nett Sales",
                         "Menu",
                         "Total Nett Sales (Rp)",
-                        "Menu",
+                        "Menu Pendapatan Tertinggi (by Nett Sales)",
                     )
-                    st.altair_chart(chart, use_container_width=True)
+                    # --- DIGANTI ---
+                    st.plotly_chart(chart, use_container_width=True)
 
             st.markdown("---")
 
@@ -2279,22 +2105,13 @@ def build_tab1_sales(filtered_gmv):
 
                 col19, col20 = st.columns(2)
 
-                # #############################################################
-                # --- PERUBAHAN DIMULAI DI SINI ---
-                # #############################################################
                 with col19:
                     st.subheader("🕒 Jam Sibuk (Berdasarkan Transaksi)")
 
-                    # Salin data agar tidak mengubah data di cache (best practice)
                     peak_hours_formatted = peak_hours.copy()
-
-                    # 1. Buat label baru dari kolom 'Hour' (int)
-                    #    f"{h:02d}" memastikan 9 menjadi "09"
                     peak_hours_formatted["Jam_Label"] = peak_hours_formatted[
                         "Hour"
                     ].apply(lambda h: f"{h:02d}:00")
-
-                    # 2. Buat daftar urutan sort manual
                     hour_sort_order = peak_hours_formatted.sort_values(by="Hour")[
                         "Jam_Label"
                     ].tolist()
@@ -2308,10 +2125,8 @@ def build_tab1_sales(filtered_gmv):
                         x_type="O",
                         sort_order=hour_sort_order,  # <-- Berikan urutan sort manual
                     )
-                    st.altair_chart(chart, use_container_width=True)
-                # #############################################################
-                # --- PERUBAHAN BERAKHIR DI SINI ---
-                # #############################################################
+                    # --- DIGANTI ---
+                    st.plotly_chart(chart, use_container_width=True)
 
                 with col20:
                     st.subheader("🗓️ Hari Sibuk (Berdasarkan Transaksi)")
@@ -2333,7 +2148,8 @@ def build_tab1_sales(filtered_gmv):
                         x_type="O",
                         sort_order=day_sort_order,
                     )
-                    st.altair_chart(chart, use_container_width=True)
+                    # --- DIGANTI ---
+                    st.plotly_chart(chart, use_container_width=True)
 
             # === 6. URUTAN BARU 5: ANALISIS TRANSAKSI (TATA LETAK VERTIKAL) ===
             with st.expander(
@@ -2348,9 +2164,10 @@ def build_tab1_sales(filtered_gmv):
                         "Total_Penjualan",
                         "Cleaned_Payment",
                         "Total Penjualan (Rp)",
-                        "Metode Pembayaran",
+                        "Penjualan per Metode Pembayaran",
                     )
-                    st.altair_chart(chart, use_container_width=True)
+                    # --- DIGANTI ---
+                    st.plotly_chart(chart, use_container_width=True)
                 else:
                     st.warning("Kolom 'Payment Method' tidak ditemukan di File 1.")
 
@@ -2364,9 +2181,10 @@ def build_tab1_sales(filtered_gmv):
                         "Total After Bill Discount",
                         "Visit Purpose",
                         "Total Penjualan (Rp)",
-                        "Tipe Kunjungan",
+                        "Penjualan per Tipe Kunjungan",
                     )
-                    st.altair_chart(chart, use_container_width=True)
+                    # --- DIGANTI ---
+                    st.plotly_chart(chart, use_container_width=True)
                 else:
                     st.warning("Kolom 'Visit Purpose' tidak ditemukan di File 1.")
 
@@ -2561,15 +2379,21 @@ def build_tab2_cogs(filtered_cogs):
                         "Total Profit (Rp)",
                         "Menu",
                         "Total Profit (Rp)",
-                        "Menu",
+                        "Menu Paling Untung (by Total Profit Rp)",
                     )
-                    st.altair_chart(chart, use_container_width=True)
+                    # --- DIGANTI ---
+                    st.plotly_chart(chart, use_container_width=True)
                 with p_col6:
                     st.markdown("##### 📈 Menu Margin Tertinggi (by %)")
                     chart = create_horizontal_bar_chart(
-                        top_10_margin_pct, "Margin (%)", "Menu", "Margin (%)", "Menu"
+                        top_10_margin_pct,
+                        "Margin (%)",
+                        "Menu",
+                        "Margin (%)",
+                        "Menu Margin Tertinggi (by %)",
                     )
-                    st.altair_chart(chart, use_container_width=True)
+                    # --- DIGANTI ---
+                    st.plotly_chart(chart, use_container_width=True)
 
                 p_col7, p_col8 = st.columns(2)
                 with p_col7:
@@ -2581,10 +2405,11 @@ def build_tab2_cogs(filtered_cogs):
                         "Total Profit (Rp)",
                         "Menu",
                         "Total Profit (Rp)",
-                        "Menu",
+                        "Menu Paling Tidak Untung (by Total Profit Rp)",
                         sort_order="x",
                     )
-                    st.altair_chart(chart, use_container_width=True)
+                    # --- DIGANTI ---
+                    st.plotly_chart(chart, use_container_width=True)
                 with p_col8:
                     st.markdown("##### 📉 Menu Margin Terendah (by %)")
                     chart = create_horizontal_bar_chart(
@@ -2592,10 +2417,11 @@ def build_tab2_cogs(filtered_cogs):
                         "Margin (%)",
                         "Menu",
                         "Margin (%)",
-                        "Menu",
+                        "Menu Margin Terendah (by %)",
                         sort_order="x",
                     )
-                    st.altair_chart(chart, use_container_width=True)
+                    # --- DIGANTI ---
+                    st.plotly_chart(chart, use_container_width=True)
 
             # #############################################################
             # --- BLOK INSIGHT BARU DITEMPATKAN DI SINI (PALING BAWAH) ---
@@ -3120,7 +2946,8 @@ def build_tab3_hr(filtered_waiter):
                         x_type="O",
                         sort_order=sort_order_time,
                     )
-                    st.altair_chart(chart1, use_container_width=True)
+                    # --- DIGANTI ---
+                    st.plotly_chart(chart1, use_container_width=True)
                 with t_col2:
                     st.markdown("##### Berdasarkan Total Penjualan")
                     chart2 = create_vertical_bar_chart(
@@ -3132,7 +2959,8 @@ def build_tab3_hr(filtered_waiter):
                         x_type="O",
                         sort_order=sort_order_time,
                     )
-                    st.altair_chart(chart2, use_container_width=True)
+                    # --- DIGANTI ---
+                    st.plotly_chart(chart2, use_container_width=True)
 
                 st.dataframe(
                     time_data.set_index("Waktu Kunjungan").style.format(
@@ -3154,9 +2982,10 @@ def build_tab3_hr(filtered_waiter):
                     "Total_Penjualan",
                     "Waiter",
                     "Total Penjualan (Rp)",
-                    "Waiter",
+                    "Performa Waiter Teratas (by Penjualan)",
                 )
-                st.altair_chart(chart_waiter, use_container_width=True)
+                # --- DIGANTI ---
+                st.plotly_chart(chart_waiter, use_container_width=True)
                 st.dataframe(
                     waiter_data.set_index("Waiter").style.format(
                         {
@@ -4088,177 +3917,89 @@ def build_tab6_target(data_gmv):
 
     col_a, col_b = st.columns(2)
     if sisa_hari > 0:
-        col_a.metric(
+
+        # #############################################################
+        # --- PERBAIKAN SINTAKS DI SINI ---
+        # #############################################################
+
+        col_a.metric(  # 1. Hapus () dari sini
             label="Target Harian Sisa (Weekday)",
             value=format_rupiah(rdr_weekday),
-            help="Target penjualan harian baru Anda untuk hari Sen, Sel, Rab, Kam.",
-        )
-        col_b.metric(
-            label="Target Harian Sisa (Weekend)",
-            value=format_rupiah(rdr_weekend),
-            help="Target penjualan harian baru Anda untuk hari Jum, Sab, Min.",
-        )
+            delta=f"vs Rata-rata: {format_rupiah(avg_sales_weekday)}",
+            delta_color=(
+                "inverse"
+                if rdr_weekday > avg_sales_weekday
+                else ("normal" if rdr_weekday > 0 else "off")
+            ),  # 2. Tambahkan koma di sini
+            help="Penjualan harian (Sen-Kam) yang dibutuhkan untuk mencapai target.",
+        )  # 3. Pindahkan ) ke sini
+
+        # #############################################################
+        # --- BATAS PERBAIKAN ---
+        # #############################################################
+
+        with col_b:
+            col_b.metric(
+                label="Target Harian Sisa (Weekend)",
+                value=format_rupiah(rdr_weekend),
+                delta=f"vs Rata-rata: {format_rupiah(avg_sales_weekend)}",
+                delta_color=(
+                    "inverse"
+                    if rdr_weekend > avg_sales_weekend
+                    else ("normal" if rdr_weekend > 0 else "off")
+                ),
+                help="Penjualan harian (Jum-Min) yang dibutuhkan untuk mencapai target.",
+            )
     else:
-        col_a.info("Bulan ini telah selesai. Tidak ada target sisa hari.")
+        # Jika bulan sudah selesai
+        col_a.metric("Rata-rata Weekday (Final)", format_rupiah(avg_sales_weekday))
+        col_b.metric("Rata-rata Weekend (Final)", format_rupiah(avg_sales_weekend))
 
-    col_d, col_e = st.columns(2)
-    col_d.metric(
-        label="Rata-rata Weekday (Sen-Kam)",
-        value=format_rupiah(avg_sales_weekday),
-        delta=format_rupiah(avg_sales_weekday - rdr_weekday) if sisa_hari > 0 else None,
-        delta_color="normal" if (avg_sales_weekday - rdr_weekday) > 0 else "inverse",
+    st.markdown("---")
+    st.subheader(f"📈 Tren Penjualan Harian - {active_month_name}")
+
+    # Buat grafik Plotly untuk tren harian
+    fig_daily_trend = px.line(
+        daily_sales_agg,
+        x="Sales Date In",
+        y="Total After Bill Discount",
+        color="Tipe Hari",
+        title=f"Tren Penjualan Harian - {active_month_name}",
+        labels={
+            "Sales Date In": "Tanggal",
+            "Total After Bill Discount": "Total Penjualan (Rp)",
+            "Tipe Hari": "Tipe Hari",
+        },
+        template="plotly_white",
+        markers=True,
     )
-    col_e.metric(
-        label="Rata-rata Weekend (Jum-Min)",
-        value=format_rupiah(avg_sales_weekend),
-        delta=format_rupiah(avg_sales_weekend - rdr_weekend) if sisa_hari > 0 else None,
-        delta_color="normal" if (avg_sales_weekend - rdr_weekend) > 0 else "inverse",
+    fig_daily_trend.update_layout(
+        title_x=0.01,
+        yaxis_tickformat=".2s",
+        legend_title_text="",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
     )
+    fig_daily_trend.update_traces(
+        hovertemplate="<b>%{x|%d %B}</b><br>Penjualan: %{y:,.0f}<extra></extra>"
+    )
+    st.plotly_chart(fig_daily_trend, use_container_width=True)
 
-    try:
-        st.subheader("Grafik 1: Tren Penjualan & Target Sisa Bulan")
-
-        actual_data_df = (
-            daily_sales_agg.groupby(daily_sales_agg["Sales Date In"].dt.date)[
-                "Total After Bill Discount"
-            ]
-            .sum()
-            .reset_index()
-        )
-        actual_data_df.rename(
-            columns={
-                "Sales Date In": "Tanggal",
-                "Total After Bill Discount": "Penjualan",
-            },
-            inplace=True,
-        )
-        actual_data_df["Tipe"] = "1 - Penjualan Aktual"
-        actual_data_df["Tanggal"] = pd.to_datetime(actual_data_df["Tanggal"])
-
-        plot_df_1 = actual_data_df
-
-        if sisa_hari > 0:
-            sisa_tanggal_df["Penjualan"] = sisa_tanggal_df["Nama Hari"].apply(
-                lambda x: rdr_weekend if x in weekends_def else rdr_weekday
-            )
-            sisa_tanggal_df["Tipe"] = "2 - Target Dinamis"
-            sisa_tanggal_df.rename(columns={"Tanggal": "Tanggal"}, inplace=True)
-            plot_df_1 = pd.concat(
-                [actual_data_df, sisa_tanggal_df[["Tanggal", "Penjualan", "Tipe"]]]
-            )
-            st.write(
-                "Grafik ini menunjukkan penjualan aktual Anda (biru) dilanjutkan dengan target dinamis (merah putus-putus) yang harus Anda capai di sisa hari."
-            )
-        else:
-            st.write(
-                "Grafik ini menunjukkan penjualan aktual Anda (biru) selama bulan yang telah selesai."
-            )
-
-        line_chart = (
-            alt.Chart(plot_df_1)
-            .mark_line(point=True)
-            .encode(
-                x=alt.X("Tanggal:T", title="Tanggal"),
-                y=alt.Y("Penjualan:Q", title="Penjualan (Rp)"),
-                color=alt.Color("Tipe:N", title="Legenda", sort="ascending"),
-                strokeDash=alt.StrokeDash("Tipe:N", legend=None, sort="ascending"),
-                tooltip=[
-                    alt.Tooltip("Tanggal", format="%d-%m-%Y"),
-                    alt.Tooltip("Penjualan", format=",.0f"),
-                    "Tipe",
-                ],
-            )
-            .properties(padding={"top": 20})
-        )
-        st.altair_chart(line_chart, use_container_width=True)
-
-        st.subheader("Grafik 2: Diagnostik Performa Rata-rata vs. Target")
-
-        daily_sales_with_dayname = (
-            data_bulan_aktif.groupby(
-                [data_bulan_aktif["Sales Date In"].dt.date, "Nama Hari"]
-            )["Total After Bill Discount"]
-            .sum()
-            .reset_index()
-        )
-
-        avg_sales_by_day_raw = (
-            daily_sales_with_dayname.groupby("Nama Hari")["Total After Bill Discount"]
-            .mean()
-            .reset_index()
-        )
-
-        master_days_df = pd.DataFrame({"Nama Hari": day_sort_order})
-
-        avg_sales_by_day = pd.merge(
-            master_days_df, avg_sales_by_day_raw, on="Nama Hari", how="left"
-        ).fillna(0)
-
-        avg_sales_by_day.rename(
-            columns={"Total After Bill Discount": "Jumlah"}, inplace=True
-        )
-        avg_sales_by_day["Tipe"] = "1 - Rata-rata Aktual"
-
-        target_per_hari_df = pd.DataFrame(
-            {
-                "Nama Hari": day_sort_order,
-                "Jumlah": [
-                    rdr_weekday if day in weekdays_def else rdr_weekend
-                    for day in day_sort_order
-                ],
-                "Tipe": "2 - Target Harian Baru (RDR)",
-            }
-        )
-
-        plot_df_2 = pd.concat([avg_sales_by_day, target_per_hari_df])
-
-        base = alt.Chart(plot_df_2).encode(
-            x=alt.X("Nama Hari:N", title="Hari", sort=day_sort_order),
-            y=alt.Y("Jumlah:Q", title="Penjualan (Rp)"),
-        )
-
-        bar_chart = (
-            base.transform_filter(alt.datum["Tipe"] == "1 - Rata-rata Aktual")
-            .mark_bar()
-            .encode(
-                color=alt.Color("Nama Hari:N", title="Hari"),
-                tooltip=[
-                    "Nama Hari",
-                    alt.Tooltip("Jumlah", format=",.0f", title="Rata-rata Aktual"),
-                ],
-            )
-        )
-
-        line_chart_target = (
-            base.transform_filter(alt.datum["Tipe"] == "2 - Target Harian Baru (RDR)")
-            .mark_line(point=True, color="red", strokeDash=[5, 5])
-            .encode(
-                tooltip=[
-                    "Nama Hari",
-                    alt.Tooltip("Jumlah", format=",.0f", title="Target Harian Baru"),
-                ]
-            )
-        )
-
-        if sisa_hari > 0:
-            st.write(
-                "Grafik ini membandingkan performa rata-rata Anda per hari (Bars) dengan Target Harian Dinamis (garis merah) yang baru."
-            )
-        else:
-            st.write(
-                "Grafik ini menampilkan performa rata-rata Anda per hari (Bars) untuk bulan yang telah selesai."
-            )
-
-        combined_chart = bar_chart + line_chart_target
-
-        st.altair_chart(
-            combined_chart.properties(padding={"top": 20}),
-            use_container_width=True,
-        )
-
-    except Exception as e:
-        st.error(f"Gagal membuat grafik tren harian: {e}")
-        st.exception(e)
+    # Grafik Rata-rata Tipe Hari
+    avg_sales_df = (
+        daily_sales_agg.groupby("Tipe Hari")["Total After Bill Discount"]
+        .mean()
+        .reset_index()
+    )
+    fig_avg_type = create_vertical_bar_chart(
+        avg_sales_df,
+        "Tipe Hari",
+        "Total After Bill Discount",
+        "Tipe Hari",
+        "Rata-rata Penjualan (Rp)",
+        x_type="O",
+        sort_order=["Weekday (Sen-Kam)", "Weekend (Jum-Min)"],
+    )
+    st.plotly_chart(fig_avg_type, use_container_width=True)
 
     # #############################################################
     # --- BLOK INSIGHT BARU DITEMPATKAN DI SINI (PALING BAWAH) ---
@@ -4268,23 +4009,25 @@ def build_tab6_target(data_gmv):
     st.header("💡 Insight Otomatis (Analisis Target)")
 
     # Panggil fungsi 'pencari insight' kita
-    # Kita gunakan kamus KPI yang sudah kita kumpulkan
+    # kpi_insight_dict sudah diisi di seluruh fungsi ini
     insights = generate_target_insights(kpi_insight_dict)
 
     # Tampilkan dalam expander baru
-    with st.expander("Klik untuk melihat Rangkuman Rencana Aksi", expanded=True):
+    with st.expander(
+        "Klik untuk melihat Rangkuman & Rencana Aksi Target Anda",
+        expanded=True,
+    ):
         if insights:
-            # Loop melalui daftar kamus insight
-            for insight in insights:
-                # Periksa 'type' dan panggil fungsi streamlit yang sesuai
-                if insight["type"] == "success":
-                    st.success(insight["text"], icon="🎉")
-                elif insight["type"] == "warning":
-                    st.warning(insight["text"], icon="💡")
-                elif insight["type"] == "error":
-                    st.error(insight["text"], icon="⚠️")
-                else:  # 'info'
-                    st.info(insight["text"], icon="👍")
+            for insight_item in insights:
+                # Gunakan tipe untuk menentukan st.success/warning/info/error
+                if insight_item["type"] == "success":
+                    st.success(insight_item["text"], icon="✅")
+                elif insight_item["type"] == "warning":
+                    st.warning(insight_item["text"], icon="⚠️")
+                elif insight_item["type"] == "error":
+                    st.error(insight_item["text"], icon="🚨")
+                else:  # "info"
+                    st.info(insight_item["text"], icon="💡")
         else:
             st.info("Tidak ada insight otomatis yang dapat dibuat dari data ini.")
 
@@ -4293,265 +4036,576 @@ def build_tab6_target(data_gmv):
     # #############################################################
 
 
-def build_tab7_pelanggan(data_ulasan):
-    """
-    Menggambar Tab 7 (Analisis Pelanggan) versi BARU dengan AI.
-    """
-    st.header("❤️ Analisis Ulasan & Sentimen Pelanggan (AI)")
+def build_tab7_ulasan(data_ulasan):
+    """Menggambar Tab 7 (Analisis Ulasan Pelanggan)."""
+    st.header("❤️ Analisis Sentimen & Ulasan Pelanggan")
 
     if data_ulasan is None or data_ulasan.empty:
         st.warning(
-            "Silakan upload file Laporan Ulasan (File 4) di sidebar untuk melihat analisis pelanggan."
+            "Silakan upload file Laporan Ulasan (File 4) di sidebar untuk melihat analisis sentimen."
         )
         return
 
-    # --- 1. JALANKAN ANALISIS SENTIMEN ---
-    st.subheader("🤖 Analisis Sentimen Otomatis")
-    st.info(
-        "Model AI menganalisis *konteks* ulasan untuk menentukan sentimen (Positif/Negatif/Netral), tidak hanya berdasarkan rating bintang."
-    )
-
-    # Muat model (di-cache)
-    sentiment_model = load_sentiment_model()
-
-    if sentiment_model is None:
-        st.error("Model sentimen gagal dimuat. Tab ini tidak dapat ditampilkan.")
-        return
-
-    # Jalankan analisis (di-cache)
-    df_sentimen = run_sentiment_analysis(data_ulasan, sentiment_model)
-    # Di dalam build_tab7_pelanggan
-
-    # --- TAMBAHKAN BARIS DEBUG INI ---
-    if "Sentimen" in df_sentimen.columns:
-        st.write("DEBUG: Label Mentah Ditemukan:", df_sentimen["Sentimen"].unique())
-    # --- BATAS BARIS DEBUG ---
-
-    # Tampilkan KPI Sentimen
-    if not df_sentimen.empty and "Sentimen" in df_sentimen.columns:
-
-        # --- PERBAIKAN DI SINI ---
-        # Konversi kolom Sentimen ke huruf kecil untuk memastikan pencocokan
-        sentiment_counts = (
-            df_sentimen["Sentimen"].str.lower().value_counts(normalize=True)
+    # --- 1. Definisikan Kata Kunci (Dapat Disesuaikan) ---
+    with st.expander("Pengaturan Kustomisasi Topik Ulasan (Opsional)"):
+        st.info(
+            "Masukkan kata kunci (dipisah koma) untuk melacak topik spesifik dalam ulasan."
         )
-        # --- BATAS PERBAIKAN ---
+        col_k1, col_k2 = st.columns(2)
+        keyword_makanan_str = col_k1.text_input(
+            "Topik Makanan (cth: enak, lezat, porsi, hambar, asin)",
+            "enak,lezat,porsi,hambar,asin,dingin,basi,mantap,nikmat,segar",
+        )
+        keyword_pelayanan_str = col_k1.text_input(
+            "Topik Pelayanan (cth: ramah, cepat, lama, jutek, sopan)",
+            "ramah,cepat,lama,jutek,sopan,membantu,lambat,pelayanan",
+        )
+        keyword_suasana_str = col_k2.text_input(
+            "Topik Suasana (cth: nyaman, bersih, kotor, berisik, adem)",
+            "nyaman,bersih,kotor,berisik,adem,dingin,panas,cozy,tempat,suasana",
+        )
+        keyword_harga_str = col_k2.text_input(
+            "Topik Harga (cth: murah, mahal, worth it, promo)",
+            "murah,mahal,worth it,promo,diskon,terjangkau,harga",
+        )
 
-        # Ambil persentase (default 0 jika tidak ada)
-        # Kode di bawah ini sekarang akan bekerja dengan benar
-        pct_positive = sentiment_counts.get("positive", 0) * 100
-        pct_negative = sentiment_counts.get("negative", 0) * 100
-        pct_neutral = sentiment_counts.get("neutral", 0) * 100
+        KEYWORDS = {
+            "Makanan": [
+                k.strip().lower() for k in keyword_makanan_str.split(",") if k.strip()
+            ],
+            "Pelayanan": [
+                k.strip().lower() for k in keyword_pelayanan_str.split(",") if k.strip()
+            ],
+            "Suasana": [
+                k.strip().lower() for k in keyword_suasana_str.split(",") if k.strip()
+            ],
+            "Harga": [
+                k.strip().lower() for k in keyword_harga_str.split(",") if k.strip()
+            ],
+        }
 
-        kpi_col1, kpi_col2, kpi_col3 = st.columns(3)
-        kpi_col1.metric("👍 Ulasan Positif (AI)", f"{pct_positive:.1f}%")
-        kpi_col2.metric("👎 Ulasan Negatif (AI)", f"{pct_negative:.1f}%")
-        kpi_col3.metric("😐 Ulasan Netral (AI)", f"{pct_neutral:.1f}%")
+    # Fungsi untuk kategorisasi
+    @st.cache_data
+    def find_topics(ulasan_text, keyword_dict):
+        ulasan_text_lower = str(ulasan_text).lower()
+        topics_found = []
+        for topic, keys in keyword_dict.items():
+            for key in keys:
+                # Gunakan regex word boundary untuk pencarian yang lebih akurat
+                if re.search(r"\b" + re.escape(key) + r"\b", ulasan_text_lower):
+                    topics_found.append(topic)
+                    break  # Hanya catat satu kali per topik
+        if not topics_found:
+            return "Lainnya"
+        return ", ".join(topics_found)
+
+    # --- 2. Hitung NPS dan Kategori ---
+    df = data_ulasan.copy()
+    df.dropna(subset=["Ulasan", "Rating_Clean"], inplace=True)
+
+    def categorize_nps(rating):
+        if rating >= 5:  # Asumsi rating 5 adalah promoter di skala 1-5
+            return "Promoter"
+        elif rating == 4:  # Asumsi rating 4 adalah passive
+            return "Passive"
+        else:  # 1-3
+            return "Detractor"
+
+    df["NPS_Category"] = df["Rating_Clean"].apply(categorize_nps)
+    df["Topik"] = df["Ulasan"].apply(lambda x: find_topics(x, KEYWORDS))
+
+    total_ulasan = len(df)
+    avg_rating = df["Rating_Clean"].mean()
+
+    if total_ulasan > 0:
+        promoters_pct = (df["NPS_Category"] == "Promoter").sum() / total_ulasan
+        detractors_pct = (df["NPS_Category"] == "Detractor").sum() / total_ulasan
+        nps_score = (promoters_pct - detractors_pct) * 100
     else:
-        st.warning("Gagal menjalankan analisis sentimen pada data ulasan.")
-        return  # Hentikan jika sentimen gagal
+        nps_score = 0
+        avg_rating = 0
 
+    # --- 3. Tampilkan Metrik KPI ---
+    st.subheader("📊 KPI Sentimen Pelanggan")
+    kpi_col1, kpi_col2, kpi_col3 = st.columns(3)
+    kpi_col1.metric("Total Ulasan", f"{total_ulasan} ulasan")
+    kpi_col2.metric("Rata-rata Rating", f"{avg_rating:.1f} / 5 ⭐")
+    kpi_col3.metric("Net Promoter Score (NPS)", f"{nps_score:.1f}")
+
+    # --- 4. Tampilkan Grafik Analisis Topik ---
     st.markdown("---")
+    st.subheader("🗣️ Analisis Topik Ulasan")
 
-    # --- 2. JALANKAN TOPIC MODELING ---
-    st.subheader("📊 Analisis Topik Otomatis (BERTopic)")
-    st.info(
-        "Model AI membaca semua ulasan dan mengelompokkannya ke dalam topik-topik yang paling sering dibicarakan secara otomatis."
+    # Pisahkan ulasan positif (4-5) dan negatif (1-3)
+    df_positive = df[df["Rating_Clean"] >= 4]
+    df_negative = df[df["Rating_Clean"] <= 3]
+
+    # Hitung topik
+    positive_topics = (
+        df_positive["Topik"].str.split(", ").explode().value_counts().reset_index()
     )
+    negative_topics = (
+        df_negative["Topik"].str.split(", ").explode().value_counts().reset_index()
+    )
+    positive_topics.columns = ["Topik", "Jumlah"]
+    negative_topics.columns = ["Topik", "Jumlah"]
 
-    # Jalankan BERTopic (di-cache)
-    topic_model, topic_info = run_topic_modeling(df_sentimen)
+    # Tambahkan Peringkat Bintang 1 sebagai topik negatif (sesuai history)
+    bintang_1_count = (df["Rating_Clean"] == 1).sum()
+    if bintang_1_count > 0:
+        new_row = pd.DataFrame(
+            [{"Topik": "Rating 1 (Sangat Buruk)", "Jumlah": bintang_1_count}]
+        )
+        negative_topics = pd.concat([new_row, negative_topics], ignore_index=True)
 
-    if topic_model and topic_info is not None:
-        # Tampilkan Grafik Topik
-        # BERTopic menghasilkan grafik Plotly interaktif
-        st.write("Visualisasi Sebaran Topik:")  # <-- Saya tambahkan judul kecil
-        try:
-            fig_topics = topic_model.visualize_topics()
-            fig_topics.update_layout(
-                width=1000,  # Atur lebar
-                height=800,  # Atur tinggi
-                margin=dict(l=50, r=50, t=50, b=50),
-                # font=dict(size=12) # Sesuaikan jika perlu
+    chart_col1, chart_col2 = st.columns(2)
+    with chart_col1:
+        st.markdown("##### 👍 Topik Positif (Rating 4-5)")
+        if not positive_topics.empty:
+            chart_pos = create_horizontal_bar_chart(
+                positive_topics,
+                "Jumlah",
+                "Topik",
+                "Jumlah Sebutan",
+                "Topik Ulasan Positif",
             )
-            st.plotly_chart(fig_topics, use_container_width=False)
-        except Exception as e:
-            st.warning(f"Gagal membuat visualisasi utama topik: {e}")
+            st.plotly_chart(chart_pos, use_container_width=True)
+        else:
+            st.info("Tidak ada topik positif yang terdeteksi.")
 
-        # --- TAMBAHKAN INI UNTUK VISUALISASI BARCHART ---
-        st.write("Kata Kunci Topik dalam Bagan Batang:")
-        try:
-            # Ambil beberapa topik teratas (misal 5-10 topik yang paling banyak dibicarakan)
-            # Filter -1 (outlier) topic
-            main_topics = (
-                topic_info[topic_info["Topic"] != -1]
-                .sort_values("Count", ascending=False)
-                .head(10)["Topic"]
-                .tolist()
+    with chart_col2:
+        st.markdown("##### 👎 Topik Negatif (Rating 1-3)")
+        if not negative_topics.empty:
+            chart_neg = create_horizontal_bar_chart(
+                negative_topics,
+                "Jumlah",
+                "Topik",
+                "Jumlah Sebutan",
+                "Topik Ulasan Negatif",
             )
+            st.plotly_chart(chart_neg, use_container_width=True)
+        else:
+            st.info("Tidak ada topik negatif yang terdeteksi.")
 
-            if main_topics:
-                fig_barchart = topic_model.visualize_barchart(
-                    topics=main_topics,
-                    n_words=8,  # Tampilkan 8 kata kunci teratas per topik
-                    height=400,  # Tinggi setiap barchart
-                )
-                # Anda mungkin perlu menyesuaikan font di sini juga
-                fig_barchart.update_layout(font=dict(size=12))
-                st.plotly_chart(fig_barchart, use_container_width=True)
-            else:
-                st.info(
-                    "Tidak ada topik yang cukup signifikan untuk ditampilkan dalam bagan batang."
-                )
+    # --- 5. Tampilkan Data Mentah ---
+    with st.expander("Lihat Data Mentah Ulasan"):
+        st.dataframe(
+            df[["Nama", "Rating_Clean", "Ulasan", "NPS_Category", "Topik"]],
+            use_container_width=True,
+        )
 
-        except Exception as e:
-            st.error(f"Gagal membuat visualisasi barchart topik: {e}")
-
-        # <-- PERBAIKAN DI SINI: Blok ini digeser ke kiri (un-indented)
-        # Tampilkan DataFrame Topik
-        with st.expander("Lihat Rincian Data Topik"):
-            st.write(
-                "Daftar topik yang ditemukan (Topik -1 adalah 'Outlier' atau ulasan umum yang tidak masuk kategori manapun):"
-            )
-            # Tampilkan kata kunci untuk setiap topik
-            topic_df_display = topic_info[["Topic", "Count", "Name", "Representation"]]
-            topic_df_display = topic_df_display.rename(
-                columns={
-                    "Topic": "ID Topik",
-                    "Count": "Jumlah Ulasan",
-                    "Name": "Nama Topik (Otomatis)",
-                    "Representation": "Kata Kunci Utama",
-                }
-            )
-            st.dataframe(topic_df_display, use_container_width=True)
-
+    # --- 6. Blok Insight (PALING BAWAH) ---
     st.markdown("---")
+    st.header("💡 Insight Otomatis (Analisis Ulasan)")
+    insights = generate_review_insights(
+        total_ulasan, avg_rating, nps_score, positive_topics, negative_topics
+    )
+    with st.expander(
+        "Klik untuk melihat Temuan Kunci dari Ulasan Pelanggan", expanded=True
+    ):
+        if insights:
+            for insight in insights:
+                st.markdown(f"&bull; {insight}")
+        else:
+            st.info("Tidak ada insight otomatis yang dapat dibuat dari data ini.")
 
-    # --- 3. TAMPILKAN ULASAN DENGAN SENTIMEN BARU ---
-    st.subheader("🔍 Telusuri Ulasan (dengan Sentimen AI)")
 
-
-# #################################################################
-# --- BAGIAN 3.8: FUNGSI PEMBANGUN UI (TAB 8 - PEMBELIAN BARU) ---
-# #################################################################
-
-
-def build_tab8_purchasing(filtered_purchase):
-    """Menggambar Tab 8 (Analisis Pembelian / Food Cost).
-    (VERSI BARU DENGAN KOTAK INSIGHT DI BAWAH)
-    """
-    st.header("🛒 Analisis Biaya Pembelian (Cost Control)")
+def build_tab8_purchase(filtered_purchase):
+    """Menggambar Tab 8 (Analisis Laporan Pembelian)."""
+    st.header("🛒 Analisis Biaya Pembelian (Purchase)")
+    st.info(
+        "Tab ini menganalisis Laporan Pembelian (File 5) untuk melacak "
+        "pengeluaran berdasarkan kategori, supplier, dan item."
+    )
 
     if filtered_purchase is None:
-        st.info(
-            "Silakan upload file Laporan Pembelian (File 5) di sidebar untuk melihat analisis biaya."
+        st.warning(
+            "Silakan upload file Laporan Pembelian (File 5) di sidebar "
+            "untuk melihat analisis biaya."
         )
         return
 
     if filtered_purchase.empty:
-        st.warning(
-            "Tidak ada data ditemukan di File Pembelian untuk rentang waktu yang dipilih."
-        )
+        st.warning("Tidak ada data pembelian untuk filter yang dipilih.")
         return
 
-    # 1. Panggil fungsi analisis (sudah di-cache)
-    (total_cost, cost_by_category, cost_by_supplier, top_items, raw_data_filtered) = (
-        analyze_purchase_data(filtered_purchase)
-    )
+    # --- 1. Analisis Data ---
+    # Fungsi ini (analyze_purchase_data) sudah di-cache
+    (
+        total_cost,
+        cost_by_category,
+        cost_by_supplier,
+        top_items,
+        raw_data_filtered,
+    ) = analyze_purchase_data(filtered_purchase)
 
-    # 2. Tampilkan KPI Utama
-    st.subheader("Ringkasan Biaya Pembelian")
-    st.warning(
-        "**PENTING:** Angka di bawah ini HANYA menjumlahkan item yang memiliki nilai 'Total' di atas Rp 0. "
-        "Pembelian dengan nilai 0 (misalnya, beberapa transfer HO) tidak dihitung.",
-        icon="⚠️",
-    )
-
+    # --- 2. Tampilkan Metrik KPI ---
+    st.subheader("📊 KPI Biaya Pembelian")
     st.metric(
-        label="Total Biaya Pembelian Tercatat (Sesuai Filter)",
-        value=format_rupiah(total_cost),
-        help="Total dari SEMUA kategori (Food & Non-Food) yang memiliki biaya tercatat > 0.",
+        "Total Biaya Pembelian (Tercatat)",
+        format_rupiah(total_cost),
+        help="Total dari kolom 'Total' di mana nilainya > 0.",
     )
 
+    # --- 3. Tampilkan Grafik Analisis ---
     st.markdown("---")
-
-    # 3. Tampilkan Grafik
-    st.subheader("Visualisasi Biaya")
+    st.subheader("📈 Analisis Rincian Biaya")
 
     col1, col2 = st.columns(2)
 
     with col1:
-        st.markdown("##### Biaya per Kategori")
-        chart_cat = create_horizontal_bar_chart(
-            cost_by_category,
-            "Total",
-            "Category",
-            "Total Biaya (Rp)",
-            "Kategori",
-        )
-        st.altair_chart(chart_cat, use_container_width=True)
+        st.markdown("##### Biaya per Kategori (Top 10)")
+        if not cost_by_category.empty:
+            top_10_cat = cost_by_category.nlargest(10, "Total")
+            chart_cat = create_horizontal_bar_chart(
+                top_10_cat,
+                "Total",
+                "Category",
+                "Total Biaya (Rp)",
+                "Top 10 Biaya per Kategori",
+            )
+            st.plotly_chart(chart_cat, use_container_width=True)
+        else:
+            st.info("Tidak ada data biaya per kategori.")
 
     with col2:
-        st.markdown("##### Biaya per Supplier")
-        chart_supp = create_horizontal_bar_chart(
-            cost_by_supplier,
-            "Total",
-            "Supplier Name",
-            "Total Biaya (Rp)",
-            "Supplier",
-        )
-        st.altair_chart(chart_supp, use_container_width=True)
-
-    st.markdown("##### Top 20 Item Termahal (Berdasarkan Total Biaya)")
-    chart_items = create_horizontal_bar_chart(
-        top_items,
-        "Total",
-        "Product Name",
-        "Total Biaya (Rp)",
-        "Nama Produk",
-    )
-    st.altair_chart(chart_items, use_container_width=True)
+        st.markdown("##### Biaya per Supplier (Top 10)")
+        if not cost_by_supplier.empty:
+            top_10_supp = cost_by_supplier.nlargest(10, "Total")
+            chart_supp = create_horizontal_bar_chart(
+                top_10_supp,
+                "Total",
+                "Supplier Name",
+                "Total Biaya (Rp)",
+                "Top 10 Biaya per Supplier",
+            )
+            st.plotly_chart(chart_supp, use_container_width=True)
+        else:
+            st.info("Tidak ada data biaya per supplier.")
 
     st.markdown("---")
+    st.subheader("💸 Top 20 Item dengan Biaya Tertinggi")
+    if not top_items.empty:
+        chart_items = create_horizontal_bar_chart(
+            top_items,
+            "Total",
+            "Product Name",
+            "Total Biaya (Rp)",
+            "Top 20 Item Termahal",
+        )
+        st.plotly_chart(chart_items, use_container_width=True)
+    else:
+        st.info("Tidak ada data item termahal.")
 
-    # 4. Tampilkan data mentah
-    with st.expander("Lihat Rincian Data Pembelian (Difilter > Rp 0)"):
+    # --- 4. Tampilkan Data Mentah ---
+    with st.expander("Lihat Rincian Data Pembelian (Sudah Difilter)"):
         st.dataframe(
             raw_data_filtered.style.format(
-                {
-                    "Receipt Qty": "{:,.2f}",
-                    "Price": format_rupiah,
-                    "Total": format_rupiah,
-                }
+                {"Price": format_rupiah, "Total": format_rupiah}
             ),
             use_container_width=True,
         )
 
-    # #############################################################
-    # --- BLOK INSIGHT BARU DITEMPATKAN DI SINI (PALING BAWAH) ---
-    # #############################################################
-
-    st.markdown("---")  # Tambahkan pemisah visual
-    st.header("💡 Insight Otomatis (Analisis Biaya)")
-
-    # Panggil fungsi 'pencari insight' kita
+    # --- 5. Blok Insight (PALING BAWAH) ---
+    st.markdown("---")
+    st.header("💡 Insight Otomatis (Analisis Pembelian)")
     insights = generate_purchase_insights(
         total_cost, cost_by_category, cost_by_supplier, top_items
     )
-
-    # Tampilkan dalam expander baru
     with st.expander(
-        "Klik untuk melihat Temuan Kunci dari Data Pembelian", expanded=True
+        "Klik untuk melihat Temuan Kunci dari Biaya Pembelian", expanded=True
     ):
         if insights:
             for insight in insights:
-                st.markdown(f"&bull; {insight}")  # Tampilkan sebagai daftar
+                st.markdown(f"&bull; {insight}")
         else:
             st.info("Tidak ada insight otomatis yang dapat dibuat dari data ini.")
 
+
+# #################################################################
+# --- FUNGSI BARU UNTUK TAB 9 (REKOMENDASI) ---
+# #################################################################
+
+
+@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False)
+def get_market_basket_rules(df, min_support_threshold):
+    """
+    Menjalankan Market Basket Analysis (Apriori) pada data GMV.
+    VERSI BARU: Menambahkan data harga dan filter 1 item.
+    """
+    try:
+
+        # Filter Input Data (dari permintaan sebelumnya)
+        filter_regex = "PACKAGE|REFILL OCHA"
+        df_no_packages = df[
+            ~df["Menu"].str.contains(filter_regex, na=False, case=False, regex=True)
+        ]
+
+        # Ambil data harga menu
+        menu_prices = df_no_packages.groupby("Menu")["Price (Net)"].mean()
+
+        # 1. Transformasi Data
+        with st.spinner(
+            f"Memproses {df_no_packages['Bill Number'].nunique()} transaksi..."
+        ):
+            menu_counts = df_no_packages["Menu"].value_counts()
+            relevant_menus = menu_counts[menu_counts > 1].index
+            df_filtered = df_no_packages[df_no_packages["Menu"].isin(relevant_menus)]
+            transactions_list = (
+                df_filtered.groupby("Bill Number")["Menu"].apply(list).values.tolist()
+            )
+
+            if not transactions_list:
+                st.warning(
+                    "Tidak ada transaksi yang cukup untuk dianalisis (setelah filter)."
+                )
+                return pd.DataFrame()
+
+        # 2. Encode Transaksi
+        with st.spinner("Meng-encode data (TransactionEncoder)..."):
+            te = TransactionEncoder()
+            te_ary = te.fit(transactions_list).transform(transactions_list)
+            df_encoded = pd.DataFrame(te_ary, columns=te.columns_)
+
+        # 3. Jalankan Algoritma Apriori
+        with st.spinner(f"Menjalankan Apriori (support={min_support_threshold})..."):
+            frequent_itemsets = apriori(
+                df_encoded, min_support=min_support_threshold, use_colnames=True
+            )
+
+        if frequent_itemsets.empty:
+            st.warning(
+                "Tidak ditemukan pola item yang cukup kuat. Coba turunkan 'Minimal Support'."
+            )
+            return pd.DataFrame()
+
+        # 4. Buat Aturan Asosiasi
+        with st.spinner("Membangun aturan asosiasi..."):
+            rules = association_rules(
+                frequent_itemsets, metric="lift", min_threshold=1.0
+            )
+
+        if rules.empty:
+            st.info("Tidak ada aturan asosiasi yang ditemukan dengan lift > 1.")
+            return pd.DataFrame()
+
+        # Filter Logika Bisnis (Antecedents)
+        with st.spinner("Menerapkan filter logika bisnis (add-ons)..."):
+            addon_keywords_list = [
+                "UPGRADE",
+                "ADDITIONAL",
+                "ADD ON",
+                "ADD-ON",
+                "REFILL",
+                "OCHA",
+                "MINERAL WATER",
+            ]
+
+            def check_if_addon(item_set):
+                try:
+                    for item in item_set:
+                        item_upper = str(item).upper()
+                        for keyword in addon_keywords_list:
+                            if keyword in item_upper:
+                                return True
+                    return False
+                except Exception:
+                    return False
+
+            rules = rules[~rules["antecedents"].apply(check_if_addon)]
+
+        if rules.empty:
+            st.info(
+                "Tidak ada aturan asosiasi yang tersisa setelah filter logika bisnis."
+            )
+            return pd.DataFrame()
+
+        # #############################################################
+        # --- PERBAIKAN BARU: Filter 'Jika Beli' Hanya 1 Item ---
+        # Sesuai permintaan, kita hanya ingin aturan A -> B, bukan (A,C) -> B
+        # 'antecedents' saat ini masih berupa frozenset, jadi kita bisa cek 'len()'
+        # #############################################################
+
+        rules = rules[rules["antecedents"].apply(len) == 1]
+
+        if rules.empty:
+            st.info("Tidak ada aturan (single item) yang tersisa setelah filter.")
+            return pd.DataFrame()
+        # #############################################################
+        # --- BATAS PERBAIKAN ---
+        # #############################################################
+
+        # Hitung Expected Value
+        with st.spinner("Menghitung Expected Value (Confidence x Harga)..."):
+
+            # Ubah frozenset consequents menjadi string
+            # Kita filter juga agar consequents HANYA 1 item (untuk logika bersih)
+            rules = rules[rules["consequents"].apply(len) == 1]
+            rules["consequents_str"] = rules["consequents"].apply(
+                lambda x: next(iter(x))
+            )
+
+            # Gabungkan (merge) dengan data harga
+            rules = rules.merge(
+                menu_prices.rename("consequent_price"),
+                left_on="consequents_str",
+                right_index=True,
+                how="left",
+            )
+            rules["consequent_price"] = rules["consequent_price"].fillna(0)
+            rules["expected_value"] = rules["confidence"] * rules["consequent_price"]
+
+        # 5. Bersihkan Hasil
+        # Sekarang kita aman untuk konversi ke string, karena kita tahu len == 1
+        rules["antecedents"] = rules["antecedents"].apply(lambda x: ", ".join(list(x)))
+        rules["consequents"] = rules["consequents"].apply(lambda x: ", ".join(list(x)))
+
+        # URUTKAN berdasarkan metrik baru kita!
+        rules = rules.sort_values(["expected_value"], ascending=[False])
+
+        return rules[
+            [
+                "antecedents",
+                "consequents",
+                "confidence",
+                "lift",
+                "consequent_price",  # Tambahkan kolom ini
+                "expected_value",  # Tambahkan kolom ini
+            ]
+        ]
+    except Exception as e:
+        st.error(f"Gagal menjalankan Market Basket Analysis: {e}")
+        st.exception(e)
+        return pd.DataFrame()
+
+
+def build_tab9_rekomendasi(filtered_gmv):
+    """
+    Menggambar Tab 9 (Rekomendasi Menu / Market Basket Analysis).
+    VERSI FINAL: Hanya filter "JIKA BELI"
+    """
+    st.header("💡 Rekomendasi Menu Interaktif")
+    st.info(
+        "Pilih menu di filter 'JIKA Beli' untuk melihat semua item yang "
+        "paling berpotensi meningkatkan sales jika ditawarkan bersamaan."
+    )
+
+    if filtered_gmv is None or filtered_gmv.empty:
+        st.warning(
+            "Silakan upload file Laporan GMV (File 1) di sidebar "
+            "untuk melihat analisis rekomendasi."
+        )
+        return
+
+    if filtered_gmv["Bill Number"].nunique() < 50:
+        st.warning(
+            f"Jumlah transaksi terlalu sedikit ({filtered_gmv['Bill Number'].nunique()}) untuk analisis yang akurat. Minimal 50 transaksi."
+        )
+        return
+
+    # Panggil fungsi analisis yang sudah di-cache
+    with st.spinner(
+        "Menganalisis semua aturan asosiasi (bisa perlu waktu 1-2 menit)..."
+    ):
+        # Kita set support sangat rendah agar dapat semua kemungkinan data
+        rules_df = get_market_basket_rules(filtered_gmv, 0.001)
+
+    if rules_df.empty:
+        st.error("Gagal menjalankan analisis. Tidak ada aturan yang ditemukan.")
+        return
+
     # #############################################################
-    # --- BATAS BLOK INSIGHT BARU ---
+    # --- FILTER INTERAKTIF BARU (HANYA 1 FILTER) ---
     # #############################################################
+
+    st.subheader("Filter Analisis Rekomendasi")
+
+    # --- Batas Harga & Filter Kategori DIHAPUS ---
+
+    # --- Buat Filter UI (Hanya 1) ---
+    all_antecedents = sorted(rules_df["antecedents"].unique())
+
+    filter_antecedents = st.multiselect(
+        "JIKA Pelanggan Beli Menu Ini:",
+        options=all_antecedents,
+        placeholder="Ketik menu... (Kosongkan = Tampilkan Semua Aturan Teratas)",
+    )
+
+    # --- 3. Terapkan Filter ke DataFrame ---
+    with st.spinner("Menerapkan filter..."):
+        filtered_rules = rules_df.copy()
+
+        # Filter 1: Berdasarkan 'Jika Beli' (Antecedents)
+        if filter_antecedents:
+            filtered_rules = filtered_rules[
+                filtered_rules["antecedents"].isin(filter_antecedents)
+            ]
+
+        # --- Filter Kategori DIHAPUS ---
+
+    # --- 4. Tampilkan Hasil ---
+    st.markdown("---")
+    st.subheader(f"Hasil Rekomendasi (Total: {len(filtered_rules)} aturan)")
+
+    # Penjelasan metrik
+    col_a, col_b = st.columns(2)
+    with col_a:
+        st.success("**Apa itu Confidence (Kepercayaan)?**")
+        st.write(
+            "**Confidence 50%** pada (A -> B) berarti: "
+            "Dari semua orang yang membeli **Menu A**, **50%** dari mereka "
+            "**juga membeli Menu B**."
+        )
+    with col_b:
+        st.error("**Apa itu Expected Value (Nilai Harapan)?**")
+        st.write(
+            "**Expected Value = Confidence x Harga Menu B.** "
+            "Ini adalah metrik terbaik untuk menentukan prioritas. "
+            "Semakin tinggi, semakin besar potensi sales."
+        )
+
+    st.markdown("---")
+
+    if not filtered_rules.empty:
+
+        # Urutkan lagi berdasarkan Expected Value (terpenting!)
+        filtered_rules = filtered_rules.sort_values("expected_value", ascending=False)
+
+        # Tampilkan DataFrame
+        st.dataframe(
+            filtered_rules.rename(
+                columns={
+                    "antecedents": "Jika Beli Menu Ini (A)",
+                    "consequents": "Tawarkan Menu Ini (B)",
+                    "confidence": "Confidence (A->B)",
+                    "lift": "Lift",
+                    "consequent_price": "Harga (Tawaran B)",
+                    "expected_value": "Expected Value (Potensi Sales)",
+                }
+            )[
+                [  # Tampilkan dalam urutan kolom yang logis
+                    "Jika Beli Menu Ini (A)",
+                    "Tawarkan Menu Ini (B)",
+                    "Expected Value (Potensi Sales)",
+                    "Confidence (A->B)",
+                    "Harga (Tawaran B)",
+                    "Lift",
+                ]
+            ].style.format(
+                {
+                    "Confidence (A->B)": "{:.2%}",
+                    "Lift": "{:.2f}x",
+                    "Harga (Tawaran B)": format_rupiah,
+                    "Expected Value (Potensi Sales)": format_rupiah,
+                }
+            ),
+            use_container_width=True,
+        )
+    else:
+        st.info(
+            "Tidak ada rekomendasi yang cocok dengan filter Anda. Coba perlebar filter Anda."
+        )
 
 
 def build_footer():
@@ -4563,7 +4617,7 @@ def build_footer():
                 Data Driven F&B Analyst Dashboard © 2025
             </div>
             <div class="links">
-                Dev @ronihidayat
+                Developer © ronihidayat
                 <a href="https://api.whatsapp.com/message/542JTLNDT3HCO1?autoload=1&app_absent=0" target="_blank">Contact Me</a>
                 <a href="https://www.linkedin.com/in/roni-hidayat0692/" target="_blank">LinkedIn</a>
                 <a href="https://github.com/RONI1920" target="_blank">GitHub</a>
@@ -4575,90 +4629,159 @@ def build_footer():
 
 
 # #################################################################
-# --- BAGIAN 4: EKSEKUSI APLIKASI UTAMA ---
+# --- BAGIAN 4: FUNGSI UTAMA (MAIN) ---
 # #################################################################
 
 
 def main():
     """Fungsi utama untuk menjalankan aplikasi Streamlit."""
 
+    # --- KONFIGURASI HALAMAN ---
+    st.set_page_config(layout="wide")
+
+    # Inisialisasi Database
     init_db()
-    st.title("📈 Data Driven Specialyst FnB Analyst")
 
-    # 1. Gambar Sidebar
-    (gmv_file, cogs_file, waiter_file, ulasan_file, purchase_file, use_db) = (
-        build_sidebar()
-    )
+    # Muat CSS
+    load_css("style.css")  # Ini akan dilewati jika file tidak ada
 
-    # 2. Muat data
-    data_gmv, company, period, header_branch = load_data_gmv(gmv_file, use_db)
-    data_cogs = load_cogs_data(cogs_file, use_db)
-    data_waiter = load_data_waiter(waiter_file, use_db)
-    data_ulasan = load_data_ulasan(ulasan_file, use_db)
-    data_purchase = load_data_purchase(purchase_file, use_db)
-
-    # --- (Blok Logika Penyimpanan - Tidak ada perubahan) ---
-    if "save_gmv_flag" in st.session_state and st.session_state.save_gmv_flag:
-        # PENTING: Gunakan data_gmv yang sudah berisi kolom Company, Period, Branch
-        save_dataframe_to_db(data_gmv, "gmv_data")
+    # Inisialisasi session state untuk tombol save
+    if "save_gmv_flag" not in st.session_state:
         st.session_state.save_gmv_flag = False
-
-    if "save_cogs_flag" in st.session_state and st.session_state.save_cogs_flag:
-        save_dataframe_to_db(data_cogs, "cogs_data")
+    if "save_cogs_flag" not in st.session_state:
         st.session_state.save_cogs_flag = False
-
-    if "save_waiter_flag" in st.session_state and st.session_state.save_waiter_flag:
-        save_dataframe_to_db(data_waiter, "waiter_data")
+    if "save_waiter_flag" not in st.session_state:
         st.session_state.save_waiter_flag = False
-
-    if "save_ulasan_flag" in st.session_state and st.session_state.save_ulasan_flag:
-        save_dataframe_to_db(data_ulasan, "ulasan_data")
+    if "save_ulasan_flag" not in st.session_state:
         st.session_state.save_ulasan_flag = False
-
-    if "save_purchase_flag" in st.session_state and st.session_state.save_purchase_flag:
-        save_dataframe_to_db(data_purchase, "purchase_data")
+    if "save_purchase_flag" not in st.session_state:
         st.session_state.save_purchase_flag = False
 
-    # --- Tampilkan Header Info ---
-    if company and company != "N/A":
-        st.subheader(f"{company}")
-        st.caption(f"Periode Laporan: {period} | Cabang Laporan: {header_branch}")
+    # --- 1. SIDEBAR ---
+    (
+        gmv_file,
+        cogs_file,
+        waiter_file,
+        ulasan_file,
+        purchase_file,
+        use_db,
+    ) = build_sidebar()
 
-    # 3. Gambar Filter Global
-    filtered_gmv, filtered_cogs, filtered_waiter, filtered_purchase = (
-        build_global_filters(data_gmv, data_cogs, data_waiter, data_purchase)
-    )
+    # --- 2. PEMUATAN DATA (dari File atau DB) ---
+    with st.spinner("Memuat data..."):
+        data_gmv, company_name, period_str, branch_name_header = load_data_gmv(
+            gmv_file, use_db
+        )
+        data_cogs = load_cogs_data(cogs_file, use_db)
+        data_waiter = load_data_waiter(waiter_file, use_db)
+        data_ulasan = load_data_ulasan(ulasan_file, use_db)
+        data_purchase = load_data_purchase(purchase_file, use_db)
 
-    # 4. Buat Tabs (Tidak ada perubahan)
-    tab_titles = [
-        "📊 KPI Penjualan",
+    # --- 3. LOGIKA PENYIMPANAN DATA (jika tombol ditekan) ---
+    if st.session_state.save_gmv_flag:
+        if data_gmv is not None:
+            save_dataframe_to_db(data_gmv, "gmv_data")
+        st.session_state.save_gmv_flag = False
+        st.rerun()
+
+    if st.session_state.save_cogs_flag:
+        if data_cogs is not None:
+            save_dataframe_to_db(data_cogs, "cogs_data")
+        st.session_state.save_cogs_flag = False
+        st.rerun()
+
+    if st.session_state.save_waiter_flag:
+        if data_waiter is not None:
+            save_dataframe_to_db(data_waiter, "waiter_data")
+        st.session_state.save_waiter_flag = False
+        st.rerun()
+
+    if st.session_state.save_ulasan_flag:
+        if data_ulasan is not None:
+            save_dataframe_to_db(data_ulasan, "ulasan_data")
+        st.session_state.save_ulasan_flag = False
+        st.rerun()
+
+    if st.session_state.save_purchase_flag:
+        if data_purchase is not None:
+            save_dataframe_to_db(data_purchase, "purchase_data")
+        st.session_state.save_purchase_flag = False
+        st.rerun()
+
+    # --- 4. TAMPILKAN HEADER ---
+    if company_name and company_name != "N/A":
+        st.title(f"Analisis Data: {company_name}")
+        st.subheader(f"Cabang: {branch_name_header} | Periode Data: {period_str}")
+    else:
+        st.title("Dashboard Analisis Data F&B")
+
+    # --- 5. FILTER GLOBAL ---
+    (
+        filtered_gmv,
+        filtered_cogs,
+        filtered_waiter,
+        filtered_purchase,
+    ) = build_global_filters(data_gmv, data_cogs, data_waiter, data_purchase)
+
+    # --- 6. MEMBUAT NAVIGASI (MENGGANTIKAN st.tabs) ---
+
+    # Buat daftar opsi halaman
+    page_options = [
+        "📊 Penjualan (GMV)",
         "💰 COGS & Profit",
         "🧑‍🍳 SDM & Waktu",
-        "⚖️ A/B Periodik",
-        "🔮 Ramalan Tren",
+        "🛒 Pembelian",
+        "⚖️ A/B Comparison",
         "🎯 Target",
-        "❤️ Ulasan Pelanggan",
-        "🛒 Analisis Biaya",
+        "🔮 Forecast (AI)",
+        "❤️ Ulasan",
+        "💡 Rekomendasi",
     ]
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs(tab_titles)
 
-    # 5. Isi setiap Tab (Tidak ada perubahan)
-    with tab1:
+    # Buat selectbox sebagai navigasi utama
+    page = st.selectbox("Pilih Halaman Analisis:", page_options)
+    st.divider()  # Tambahkan garis pemisah agar rapi
+
+    # --- 7. ISI SETIAP HALAMAN (Menggunakan if/elif) ---
+
+    if page == "📊 Penjualan (GMV)":
         build_tab1_sales(filtered_gmv)
-    with tab2:
+
+    elif page == "💰 COGS & Profit":
         build_tab2_cogs(filtered_cogs)
-    with tab3:
+
+    elif page == "🧑‍🍳 SDM & Waktu":
         build_tab3_hr(filtered_waiter)
-    with tab4:
+
+    elif page == "🛒 Pembelian":
+        build_tab8_purchase(filtered_purchase)
+
+    elif page == "⚖️ A/B Comparison":
         build_tab4_comparison(data_gmv, data_cogs, data_waiter)
-    with tab5:
-        build_tab5_forecast(data_gmv)
-    with tab6:
+
+    elif page == "🎯 Target":
         build_tab6_target(data_gmv)
-    with tab7:
-        build_tab7_pelanggan(data_ulasan)
-    with tab8:
-        build_tab8_purchasing(filtered_purchase)
+
+    elif page == "🔮 Forecast (AI)":
+        build_tab5_forecast(data_gmv)
+
+    elif page == "❤️ Ulasan":
+        build_tab7_ulasan(data_ulasan)
+
+    elif page == "💡 Rekomendasi":
+        build_tab9_rekomendasi(filtered_gmv)
+
+    # ... (Kode JavaScript Anda di bagian akhir tetap sama) ...
+    st.markdown(
+        """
+        <script>
+        // ... (Kode JavaScript Anda tidak perlu diubah) ...
+        </script>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # --- Akhir dari fungsi main() ---
 
     build_footer()
 
@@ -4695,9 +4818,29 @@ def main():
     )
 
 
-# --- PERBAIKAN: Hanya satu blok 'if __name__ == "__main__":' ---
+def build_footer():
+    "Membangun footer aplikasi."
+    st.markdown(
+        """
+        <div id="custom-footer">
+            <div>
+                Data Driven F&B Analyst Dashboard © 2025
+            </div>
+            <div class="links">
+                Developer © ronihidayat
+                <a href="https://api.whatsapp.com/message/542JTLNDT3HCO1?autoload=1&app_absent=0" target="_blank">Contact Me</a>
+                <a href="https://www.linkedin.com/in/roni-hidayat0692/" target="_blank">LinkedIn</a>
+                <a href="https://github.com/RONI1920" target="_blank">GitHub</a>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+# #################################################################
+# --- ENTRY POINT APLIKASI ---
+# #################################################################
+
 if __name__ == "__main__":
-    # Muat CSS eksternal (jika ada)
-    load_css("style.css")
-    # Jalankan aplikasi utama
     main()
