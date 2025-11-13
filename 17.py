@@ -1220,171 +1220,6 @@ def load_data_gmv(uploaded_file, use_db=False):
 
 
 # --- HAPUS @st.cache_data DARI SINI ---
-def load_cogs_data(uploaded_file, use_db=False):
-    """Memuat dan membersihkan data COGS (File 2)."""
-    if use_db and uploaded_file is None:
-        with st.spinner("Memuat data COGS dari database..."):
-            numeric_config = {
-                "Harga Jual": "float",
-                "COGS": "float",
-                "Qty": "float",
-                "Total": "float",
-            }
-            df = load_dataframe_from_db(
-                "cogs_data",
-                date_cols=["Sales Date"],
-                numeric_cols_config=numeric_config,
-            )
-            if df is None:
-                st.info("Database COGS kosong. Silakan upload file baru.", icon="ℹ️")
-                return None
-            return df
-    if uploaded_file is None:
-        return None
-
-    # ... (Sisa fungsi ini tidak perlu diubah, biarkan apa adanya) ...
-    df = None
-    try:
-        if uploaded_file.name.endswith(".csv"):
-            df = pd.read_csv(uploaded_file, header=12, encoding="latin1")
-        elif uploaded_file.name.endswith(".xlsx"):
-            df = pd.read_excel(uploaded_file, header=12, engine="openpyxl")
-        else:
-            st.error("Format file COGS (File 2) tidak didukung.")
-            return None
-    except Exception as e:
-        st.error(f"Error membaca file COGS (File 2): {e}")
-        st.error("Pastikan header file COGS ada di baris 13.")
-        return None
-
-    column_mapping = {"Price": "Harga Jual", "COGS Total": "COGS"}
-    df.rename(columns=column_mapping, inplace=True)
-    required_cols = ["Menu", "Harga Jual", "COGS", "Qty", "Total", "Sales Date"]
-    missing_cols = [col for col in required_cols if col not in df.columns]
-    if "Branch" not in df.columns:
-        st.warning(
-            "Peringatan: Kolom 'Branch' tidak ditemukan di File COGS. Filter cabang mungkin tidak berfungsi."
-        )
-    if missing_cols:
-        st.error(f"File COGS (File 2) kekurangan kolom: {missing_cols}")
-        st.error(f"Kolom yang ditemukan: {list(df.columns)}")
-        return None
-
-    df["Menu"] = df["Menu"].astype(str)
-    df["Harga Jual"] = pd.to_numeric(df["Harga Jual"], errors="coerce").fillna(0)
-    df["COGS"] = pd.to_numeric(df["COGS"], errors="coerce").fillna(0)
-    df["Qty"] = pd.to_numeric(df["Qty"], errors="coerce").fillna(0)
-    df["Total"] = pd.to_numeric(df["Total"], errors="coerce").fillna(0)
-    df["Sales Date"] = pd.to_datetime(df["Sales Date"], errors="coerce")
-    if "Branch" in df.columns:
-        df["Branch"] = df["Branch"].astype(str).str.strip().str.title()
-    return df
-
-
-# --- HAPUS @st.cache_data DARI SINI ---
-def load_data_waiter(uploaded_file, use_db=False):
-    """Memuat dan membersihkan data Waiter (File 3)."""
-    if use_db and uploaded_file is None:
-        with st.spinner("Memuat data Waiter dari database..."):
-            numeric_config = {"Total After Bill Discount": "float"}
-            df = load_dataframe_from_db(
-                "waiter_data",
-                date_cols=["Order Time"],
-                numeric_cols_config=numeric_config,
-            )
-            if df is None:
-                st.info("Database Waiter kosong. Silakan upload file baru.", icon="ℹ️")
-                return None
-            return df
-    if uploaded_file is None:
-        return None
-
-    # ... (Sisa fungsi ini tidak perlu diubah, biarkan apa adanya) ...
-    df = None
-    try:
-        if uploaded_file.name.endswith(".csv"):
-            df = pd.read_csv(uploaded_file, header=11, encoding="latin1")
-        elif uploaded_file.name.endswith(".xlsx"):
-            df = pd.read_excel(uploaded_file, header=11, engine="openpyxl")
-        else:
-            st.error("Format file Waiter (File 3) tidak didukung.")
-            return None
-    except Exception as e:
-        st.error(f"Error membaca file Waiter (File 3): {e}")
-        st.error("Pastikan header file Waiter ada di baris 12.")
-        return None
-
-    required_cols = ["Bill Number", "Waiter", "Order Time", "Total After Bill Discount"]
-    if not all(col in df.columns for col in required_cols):
-        st.error(
-            f"File Waiter (File 3) harus memiliki kolom: {', '.join(required_cols)}"
-        )
-        st.error(f"Kolom ditemukan: {list(df.columns)}")
-        return None
-    if "Branch" not in df.columns:
-        st.warning(
-            "Peringatan: Kolom 'Branch' tidak ditemukan di File Waiter. Filter cabang mungkin tidak berfungsi."
-        )
-
-    df["Order Time"] = pd.to_datetime(df["Order Time"], errors="coerce")
-    df["Total After Bill Discount"] = pd.to_numeric(
-        df["Total After Bill Discount"], errors="coerce"
-    ).fillna(0)
-    df.dropna(subset=["Bill Number", "Order Time"], inplace=True)
-    if "Branch" in df.columns:
-        df["Branch"] = df["Branch"].astype(str).str.strip().str.title()
-    return df
-
-
-# --- HAPUS @st.cache_data DARI SINI ---
-def load_data_ulasan(uploaded_file, use_db=False):
-    """Memuat dan membersihkan data Ulasan (File 4)."""
-    if use_db and uploaded_file is None:
-        with st.spinner("Memuat data Ulasan dari database..."):
-            numeric_config = {"Rating_Clean": "int"}
-            df = load_dataframe_from_db(
-                "ulasan_data", numeric_cols_config=numeric_config
-            )
-            if df is None:
-                st.info("Database Ulasan kosong. Silakan upload file baru.", icon="ℹ️")
-                return None
-            return df
-    if uploaded_file is None:
-        return None
-
-    # ... (Sisa fungsi ini tidak perlu diubah, biarkan apa adanya) ...
-    df = None
-    try:
-        if uploaded_file.name.endswith(".xlsx"):
-            df = pd.read_excel(uploaded_file, engine="openpyxl")
-        elif uploaded_file.name.endswith(".csv"):
-            df = pd.read_csv(uploaded_file, encoding="latin1")
-        else:
-            st.error(
-                "Format file Ulasan (File 4) tidak didukung. Harap upload .xlsx atau .csv"
-            )
-            return None
-    except Exception as e:
-        st.error(f"Error membaca file Ulasan (File 4): {e}")
-        st.error(
-            "Pastikan file adalah .csv atau .xlsx dengan kolom: Nama, Rating, Ulasan"
-        )
-        return None
-
-    if "Rating" not in df.columns or "Ulasan" not in df.columns:
-        st.error("File Ulasan (File 4) harus memiliki kolom 'Rating' dan 'Ulasan'.")
-        return None
-
-    df["Rating_Clean"] = (
-        df["Rating"].astype(str).str.extract(r"(\d+)").fillna(0).astype(int)
-    )
-    df.dropna(subset=["Ulasan"], inplace=True)
-    df = df[df["Rating_Clean"] > 0]
-    df["Ulasan"] = df["Ulasan"].astype(str)
-    return df
-
-
-# --- HAPUS @st.cache_data DARI SINI ---
 def load_data_purchase(uploaded_file, use_db=False):
     """Memuat dan membersihkan data Laporan Pembelian (File 5)."""
     if use_db and uploaded_file is None:
@@ -1602,7 +1437,6 @@ def load_data_waiter(uploaded_file, use_db=False):
     return df
 
 
-# def load_data_purchase
 def load_data_ulasan(uploaded_file, use_db=False):
     """Memuat dan membersihkan data Ulasan (File 4)."""
 
@@ -1670,103 +1504,6 @@ def load_data_ulasan(uploaded_file, use_db=False):
 # #################################################################
 # --- BAGIAN 2.5: FUNGSI BARU UNTUK ANALISIS PEMBELIAN ---
 # #################################################################
-
-
-def load_data_purchase(uploaded_file, use_db=False):
-    """Memuat dan membersihkan data Laporan Pembelian (File 5)."""
-
-    # --- Logika Pemuatan DB ---
-    if use_db and uploaded_file is None:
-        with st.spinner("Memuat data Pembelian dari database..."):
-            numeric_config = {
-                "PO Qty": "float",
-                "Receipt Qty": "float",
-                "Pricelist Price": "float",
-                "Price": "float",
-                "Discount": "float",
-                "VAT": "float",
-                "Total": "float",
-            }
-            df = load_dataframe_from_db(
-                "purchase_data",
-                date_cols=["Purchase Date", "Required Date"],
-                numeric_cols_config=numeric_config,
-            )
-            if df is None:
-                st.info(
-                    "Database Pembelian kosong. Silakan upload file baru.", icon="ℹ️"
-                )
-                return None
-            return df  # Kembalikan data dari DB
-
-    # --- Logika Asli (jika file di-upload) ---
-    if uploaded_file is None:
-        return None
-
-    df = None
-    try:
-        # PENTING: File ini memiliki 11 baris metadata, jadi header ada di baris 12 (index 11)
-        if uploaded_file.name.endswith(".csv"):
-            df = pd.read_csv(uploaded_file, header=11, encoding="latin1")
-        elif uploaded_file.name.endswith(".xlsx"):
-            df = pd.read_excel(uploaded_file, header=11, engine="openpyxl")
-        else:
-            st.error("Format file Pembelian (File 5) tidak didukung.")
-            return None
-    except Exception as e:
-        st.error(f"Error membaca file Pembelian (File 5): {e}")
-        st.error("Pastikan header file Pembelian ada di baris 12.")
-        return None
-
-    # Membersihkan kolom numerik
-    numeric_cols = [
-        "PO Qty",
-        "Receipt Qty",
-        "Pricelist Price",
-        "Price",
-        "Discount",
-        "VAT",
-        "Total",
-    ]
-    for col in numeric_cols:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
-        else:
-            st.warning(f"Peringatan (File 5): Kolom wajib '{col}' tidak ditemukan.")
-            # Jika kolom Total tidak ada, kita tidak bisa melanjutkan
-            if col == "Total":
-                return None
-
-    # Membersihkan kolom tanggal
-    date_cols = ["Purchase Date", "Required Date"]
-    for col in date_cols:
-        if col in df.columns:
-            df[col] = pd.to_datetime(df[col], errors="coerce")
-
-    # Kolom kunci untuk analisis
-    if (
-        "Category" not in df.columns
-        or "Product Name" not in df.columns
-        or "Supplier Name" not in df.columns
-    ):
-        st.error(
-            "File 5 kekurangan kolom 'Category', 'Product Name', atau 'Supplier Name'."
-        )
-        return None
-
-    # Cek kolom Branch
-    if "Branch" not in df.columns:
-        st.warning(
-            "Peringatan: Kolom 'Branch' tidak ditemukan di File Pembelian. Filter cabang mungkin tidak berfungsi."
-        )
-
-    df.dropna(subset=["Purchase Number", "Purchase Date"], inplace=True)
-
-    # Normalisasi kolom cabang jika ada
-    if "Branch" in df.columns:
-        df["Branch"] = df["Branch"].astype(str).str.strip().str.title()
-
-    return df
 
 
 @st.cache_data
@@ -4413,7 +4150,7 @@ def build_tab6_target(data_gmv):
                 "inverse"
                 if rdr_weekday > avg_sales_weekday
                 else ("normal" if rdr_weekday > 0 else "off")
-            ),  # 2. Tambahkan koma di sini
+            ),
             help="Penjualan harian (Sen-Kam) yang dibutuhkan untuk mencapai target.",
         )  # 3. Pindahkan ) ke sini
 
@@ -4436,7 +4173,6 @@ def build_tab6_target(data_gmv):
     else:
         # Jika bulan sudah selesai
         col_a.metric("Rata-rata Weekday (Final)", format_rupiah(avg_sales_weekday))
-        col_b.metric("Rata-rata Weekend (Final)", format_rupiah(avg_sales_weekend))
 
     st.markdown("---")
     st.subheader(f"📈 Tren Penjualan Harian - {active_month_name}")
@@ -4810,7 +4546,6 @@ def build_tab8_purchase(filtered_purchase):
 # #################################################################
 
 
-@st.cache_data(show_spinner=False)
 @st.cache_data(show_spinner=False)
 def get_market_basket_rules(df, min_support_threshold):
     """
@@ -5370,26 +5105,6 @@ def main():
         unsafe_allow_html=True,
     )
     # --- Akhir dari fungsi main() ---
-
-
-def build_footer():
-    "Membangun footer aplikasi."
-    st.markdown(
-        """
-        <div id="custom-footer">
-            <div>
-                Data Driven F&B Analyst Dashboard © 2025
-            </div>
-            <div class="links">
-                Developer © ronihidayat
-                <a href="https://api.whatsapp.com/message/542JTLNDT3HCO1?autoload=1&app_absent=0" target="_blank">Contact Me</a>
-                <a href="https://www.linkedin.com/in/roni-hidayat0692/" target="_blank">LinkedIn</a>
-                <a href="https://github.com/RONI1920" target="_blank">GitHub</a>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
 
 
 # #################################################################
