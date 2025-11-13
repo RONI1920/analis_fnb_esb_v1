@@ -1450,7 +1450,7 @@ def build_sidebar():
             <div style='text-align: center; margin-bottom: 20px;'>
                 <h2>DATA DRIVEN</h2>
                 <h2>SPECIALYST FNB</h2>
-                <p style='font-size: 0.9rem; color: #aaaaaa; margin-top: 5px;'>Developer: @ronihidayat</p>
+                <p style='font-size: 0.9rem; color: #aaaaaa; margin-top: 5px;'> </p>
             </div>
             """,
             unsafe_allow_html=True,
@@ -4303,6 +4303,25 @@ def build_tab8_purchase(filtered_purchase):
             st.info("Tidak ada insight otomatis yang dapat dibuat dari data ini.")
 
 
+def build_footer():
+    "Membangun footer aplikasi."
+    st.markdown(
+        """
+        <div id="custom-footer">
+            <div>
+                Data Driven F&B Analyst Dashboard © 2025
+            </div>
+            <div class="links">
+                Developer © ronihidayat
+                <a href="https://api.whatsapp.com/message/542JTLNDT3HCO1?autoload=1&app_absent=0" target="_blank">Contact Me</a>
+                <a href="https://www.linkedin.com/in/roni-hidayat0692/" target="_blank">LinkedIn</a>
+                <a href="https://github.com/RONI1920" target="_blank">GitHub</a>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 # #################################################################
 # --- BAGIAN 4: FUNGSI UTAMA (MAIN) ---
 # #################################################################
@@ -4454,6 +4473,41 @@ def main():
     with tab7:  # Tab Ulasan
         # Tab Ulasan tidak bergantung pada filter (data_ulasan)
         build_tab7_ulasan(data_ulasan)
+
+
+    build_footer()
+
+    st.markdown(
+        """
+        <script>
+        function hideAllNotices() {
+            const notices = document.querySelectorAll(
+                '.stAlert[data-baseweb="alert"]:not(.fading-out)'
+            );
+
+            notices.forEach(function(notice) {
+                // Hanya atur timer untuk info/success/warning messages (bukan error)
+                if (notice.className.includes("stAlert-success") || notice.className.includes("stAlert-info") || notice.className.includes("stAlert-warning")) {
+                    notice.classList.add('fading-out');
+
+                    setTimeout(() => {
+                        notice.style.transition = 'opacity 0.5s ease-out';
+                        notice.style.opacity = '0';
+                        
+                        setTimeout(() => {
+                        notice.style.display = 'none';
+                        }, 500);
+                    }, 5000); // 5 detik sebelum mulai fade
+                }
+            });
+        }
+
+        // Jalankan sekali setelah 1 detik untuk menangkap semua notifikasi awal
+        setTimeout(hideAllNotices, 1000); 
+        </script>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 # #################################################################

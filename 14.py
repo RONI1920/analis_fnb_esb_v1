@@ -2139,7 +2139,10 @@ def build_tab1_sales(filtered_gmv):
                             x=alt.X(
                                 "Qty:Q",
                                 title="Total Kuantiti Terjual",
-                                axis=alt.Axis(orient="top"),
+                                axis=alt.Axis(
+                                    orient="top",
+                                    format=".0f"),
+
                             ),
                             y=alt.Y(
                                 "Menu Category:N",
@@ -2175,7 +2178,9 @@ def build_tab1_sales(filtered_gmv):
                             x=alt.X(
                                 "Qty:Q",
                                 title="Total Kuantiti Terjual",
-                                axis=alt.Axis(orient="top"),
+                                axis=alt.Axis(
+                                    orient="top",
+                                    format=".0f"),
                             ),
                             y=alt.Y(
                                 "Menu:N",
