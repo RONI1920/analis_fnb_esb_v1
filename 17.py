@@ -1091,11 +1091,6 @@ def generate_gmv_insights(
 # #################################################################
 
 
-# #################################################################
-# --- BAGIAN 2: FUNGSI PEMUATAN DATA (VERSI FINAL) ---
-# #################################################################
-
-
 @st.cache_data
 def load_data_gmv(uploaded_file, use_db=False):
     """Memuat dan membersihkan data GMV (File 1) DAN membaca headernya."""
