@@ -4872,29 +4872,85 @@ def build_tab9_rekomendasi(filtered_gmv):
 
 # [ ... KODE ANDA SEBELUMNYA ... ]
 
-
-def build_tab10_promo(filtered_cogs):
+def build_tab10_promo(filtered_gmv, filtered_cogs):
     """
     Menggambar Tab 10 (Analisis & Simulasi Promo)
-    VERSI DIPERBARUI: Menampilkan rincian harga per item di Skenario 2.
+    VERSI 4.0: Menggunakan 'Price (Pricelist)' dari GMV dan 'COGS' dari COGS.
     """
     st.header("💸 Analisis & Simulator Profitabilitas Promo")
     st.info(
-        "Gunakan alat ini untuk mensimulasikan profit dari skenario diskon atau promo "
-        "berdasarkan data COGS Anda."
+        "Gunakan alat ini untuk mensimulasikan profit dari skenario diskon atau promo."
     )
 
-    # Langkah Kunci: Dapatkan data profitabilitas dari fungsi cache yang ada
-    profit_df = analyze_profit(filtered_cogs)
+    # #############################################################
+    # --- PERUBAHAN BESAR: GABUNGKAN DATA GMV & COGS ---
+    # #############################################################
 
-    if profit_df is None or profit_df.empty:
+    # 1. Cek ketersediaan data
+    if filtered_gmv is None or filtered_cogs is None:
         st.error(
-            "Data COGS tidak ditemukan. Harap upload File COGS (File 2) "
-            "untuk menggunakan simulator promo ini."
+            "Simulator Promo memerlukan File 1 (GMV) dan File 2 (COGS) untuk di-upload bersamaan."
         )
         return
 
-    # Buat daftar menu yang valid (yang memiliki harga jual)
+    # 2. Ambil Harga Jual (Price Pricelist) dari GMV
+    @st.cache_data
+    def get_gmv_prices(df_gmv):
+        # --- PERUBAHAN UTAMA DI SINI ---
+        # Kita cek kolom 'Price (Pricelist)'
+        if "Price (Pricelist)" not in df_gmv.columns:
+            st.error("Kolom 'Price (Pricelist)' tidak ditemukan di File 1 (GMV).")
+            st.info("Simulator akan menggunakan 'Price (Net)' sebagai gantinya.")
+            # Fallback jika kolom tidak ada
+            if "Price (Net)" not in df_gmv.columns:
+                 st.error("Kolom 'Price (Net)' juga tidak ditemukan. Gagal memuat harga.")
+                 return pd.DataFrame()
+            
+            gmv_data = df_gmv[df_gmv["Price (Net)"] > 0]
+            prices_df = gmv_data.groupby("Menu")["Price (Net)"].mean().reset_index()
+            prices_df.rename(columns={"Price (Net)": "Harga Jual"}, inplace=True)
+            return prices_df
+
+        else:
+            # --- JALUR IDEAL (MENGGUNAKAN PRICE PRICELIST) ---
+            gmv_data = df_gmv[df_gmv["Price (Pricelist)"] > 0]
+            # Ambil harga rata-rata 'Price (Pricelist)'
+            prices_df = gmv_data.groupby("Menu")["Price (Pricelist)"].mean().reset_index()
+            # Kita tetap menamainya 'Harga Jual' agar sisa simulator berfungsi
+            prices_df.rename(columns={"Price (Pricelist)": "Harga Jual"}, inplace=True)
+            return prices_df
+        # --- BATAS PERUBAHAN ---
+
+    # 3. Ambil COGS dari file COGS
+    @st.cache_data
+    def get_cogs_costs(df_cogs):
+        cogs_df = df_cogs[df_cogs["COGS"] > 0]
+        cogs_unit_df = cogs_df.groupby("Menu")["COGS"].mean().reset_index()
+        return cogs_unit_df
+    
+    with st.spinner("Menggabungkan data Harga Jual (GMV) dan COGS..."):
+        prices_df = get_gmv_prices(filtered_gmv)
+        cogs_df = get_cogs_costs(filtered_cogs)
+
+        if prices_df.empty:
+            st.error("Gagal mendapatkan data harga dari File GMV.")
+            return
+
+        # 4. Gabungkan (Merge) data
+        profit_df = pd.merge(prices_df, cogs_df, on="Menu", how="inner")
+
+        # 5. Hitung profitabilitas
+        if not profit_df.empty:
+            profit_df["Margin (Rp)"] = profit_df["Harga Jual"] - profit_df["COGS"]
+
+    # --- AKHIR PERUBAHAN BESAR ---
+    
+    if profit_df is None or profit_df.empty:
+        st.error(
+            "Tidak ada menu yang cocok (nama menu yang sama) antara File GMV dan File COGS."
+        )
+        return
+
     menu_list = profit_df[profit_df["Harga Jual"] > 0]["Menu"].unique()
     if len(menu_list) == 0:
         st.warning("Tidak ada data menu yang valid untuk dianalisis.")
@@ -4911,7 +4967,6 @@ def build_tab10_promo(filtered_cogs):
         "jika Anda berhasil menjual sejumlah target kuantitas."
     )
 
-    # --- Input UI untuk Scenario 1 ---
     col1_s1, col2_s1 = st.columns([2, 1])
     with col1_s1:
         selected_menu_s1 = st.selectbox(
@@ -4920,12 +4975,10 @@ def build_tab10_promo(filtered_cogs):
             key="promo_menu_s1",
             placeholder="Ketik untuk mencari menu...",
         )
-
     with col2_s1:
         discount_percent = st.slider(
             "Persentase Diskon (%):", 0, 100, 15, key="promo_discount"
         )
-
     expected_qty_s1 = st.number_input(
         "Target Kuantitas Terjual (selama periode promo):",
         min_value=1,
@@ -4934,45 +4987,38 @@ def build_tab10_promo(filtered_cogs):
         key="promo_qty_s1",
     )
 
-    # --- Perhitungan Scenario 1 ---
     if selected_menu_s1:
         try:
-            # Ambil data asli dari profit_df
             menu_data = profit_df[profit_df["Menu"] == selected_menu_s1].iloc[0]
-            original_price = menu_data["Harga Jual"]
+            
+            # 'Harga Jual' ini SEKARANG adalah 'Price (Pricelist)' dari GMV
+            original_price = menu_data["Harga Jual"] 
             cogs = menu_data["COGS"]
             original_margin_rp = menu_data["Margin (Rp)"]
 
-            # Hitung nilai promo
             discount_rp = original_price * (discount_percent / 100)
             new_price = original_price - discount_rp
             new_margin_rp = new_price - cogs
-
-            # Hitung profit harga normal & selisihnya
             total_new_profit = new_margin_rp * expected_qty_s1
             total_original_profit = original_margin_rp * expected_qty_s1
             selisih_profit = total_new_profit - total_original_profit
-
             delta_color = "normal" if selisih_profit >= 0 else "inverse"
 
             st.markdown("##### 📈 Hasil Simulasi Diskon (Per Item)")
             with st.container(border=True):
                 kpi_col1, kpi_col2, kpi_col3 = st.columns(3)
-
                 kpi_col1.metric(
                     "Harga Jual Promo (Nett)",
                     format_rupiah(new_price),
                     f"Normal: {format_rupiah(original_price)}",
                     delta_color="inverse",
                 )
-
                 kpi_col2.metric(
                     "COGS (Biaya Modal)",
                     format_rupiah(cogs),
                     "Biaya Tetap",
                     delta_color="off",
                 )
-
                 kpi_col3.metric(
                     "Profit Promo (per Item)",
                     format_rupiah(new_margin_rp),
@@ -4981,22 +5027,18 @@ def build_tab10_promo(filtered_cogs):
                         "inverse" if new_margin_rp < original_margin_rp else "normal"
                     ),
                 )
-
-            # Metrik Total Profit
             st.metric(
                 f"🎉 TOTAL PROFIT (jika {expected_qty_s1} terjual)",
                 format_rupiah(total_new_profit),
                 f"Selisih: {format_rupiah(selisih_profit)} vs Normal",
                 delta_color=delta_color,
             )
-
             st.info(
                 f"**Perbandingan Profit (vs Jual Normal @ {expected_qty_s1} porsi):**\n"
                 f"* **Total Profit (Harga Normal):** {format_rupiah(total_original_profit)}\n"
                 f"* **Total Profit (Harga Promo):** {format_rupiah(total_new_profit)}\n"
                 f"* **Selisih Profit:** **{format_rupiah(selisih_profit)}**"
             )
-
         except Exception as e:
             st.error(f"Gagal menghitung simulasi untuk {selected_menu_s1}: {e}")
 
@@ -5011,7 +5053,6 @@ def build_tab10_promo(filtered_cogs):
         "**Untuk BOGO (Buy 1 Get 1 Free)**, pilih menu yang *sama* di kedua kotak."
     )
 
-    # --- Input UI untuk Scenario 2 ---
     col1_s2, col2_s2 = st.columns(2)
     with col1_s2:
         menu_A = st.selectbox(
@@ -5027,7 +5068,6 @@ def build_tab10_promo(filtered_cogs):
             key="promo_menu_b",
             placeholder="Pilih menu gratis...",
         )
-
     expected_deals_s2 = st.number_input(
         "Target Paket Promo Terjual:",
         min_value=1,
@@ -5036,38 +5076,28 @@ def build_tab10_promo(filtered_cogs):
         key="promo_qty_s2",
     )
 
-    # --- Perhitungan Scenario 2 ---
     if menu_A and menu_B:
         try:
-            # Ambil data A
             data_A = profit_df[profit_df["Menu"] == menu_A].iloc[0]
             price_A = data_A["Harga Jual"]
             cogs_A = data_A["COGS"]
             original_margin_A = data_A["Margin (Rp)"]
 
-            # Ambil data B
             data_B = profit_df[profit_df["Menu"] == menu_B].iloc[0]
-            price_B_normal = data_B[
-                "Harga Jual"
-            ]  # <-- [PERMINTAAN] Ambil harga normal B
+            price_B_normal = data_B["Harga Jual"]
             cogs_B = data_B["COGS"]
 
-            # Hitung nilai per paket
             revenue_per_deal = price_A
             cost_per_deal = cogs_A + cogs_B
             profit_per_deal = revenue_per_deal - cost_per_deal
-
-            # Hitung perbandingan
             total_promo_profit = profit_per_deal * expected_deals_s2
             total_normal_profit_A_only = original_margin_A * expected_deals_s2
             selisih_profit_s2 = total_promo_profit - total_normal_profit_A_only
             delta_color_s2 = "inverse"
 
-            # <-- [PERUBAHAN TATA LETAK METRIK] -->
             st.markdown("##### 📦 Rincian Item (Per Paket)")
             with st.container(border=True):
                 kpi_item_a, kpi_item_b = st.columns(2)
-
                 kpi_item_a.metric(
                     f"Menu A (Bayar): {menu_A}",
                     format_rupiah(price_A),
@@ -5075,8 +5105,8 @@ def build_tab10_promo(filtered_cogs):
                 )
                 kpi_item_b.metric(
                     f"Menu B (Gratis): {menu_B}",
-                    format_rupiah(0),  # Harga jualnya 0
-                    f"Harga Normal: {format_rupiah(price_B_normal)}",  # Delta-nya harga normal
+                    format_rupiah(0),
+                    f"Harga Normal: {format_rupiah(price_B_normal)}",
                     delta_color="inverse",
                 )
 
@@ -5100,15 +5130,12 @@ def build_tab10_promo(filtered_cogs):
                     "Revenue - Total COGS",
                 )
 
-            # Metrik total di luar container
             st.metric(
                 f"🎉 TOTAL PROFIT (jika {expected_deals_s2} paket terjual)",
                 format_rupiah(total_promo_profit),
                 f"Selisih: {format_rupiah(selisih_profit_s2)} vs Jual Normal (Menu A Saja)",
                 delta_color=delta_color_s2,
             )
-            # <-- [BATAS PERUBAHAN TATA LETAK] -->
-
             st.info(
                 f"**Perbandingan Profit (vs Jual Normal Menu A @ {expected_deals_s2} porsi):**\n"
                 f"* **Total Profit (Hanya Jual Menu A):** {format_rupiah(total_normal_profit_A_only)}\n"
@@ -5116,7 +5143,6 @@ def build_tab10_promo(filtered_cogs):
                 f"* **Biaya/Kerugian Promo (Selisih):** **{format_rupiah(selisih_profit_s2)}**"
             )
 
-            # Insight khusus BOGO
             if menu_A == menu_B:
                 st.warning(
                     f"**Insight BOGO:** Menjual **{expected_deals_s2} paket BOGO** "
@@ -5127,7 +5153,6 @@ def build_tab10_promo(filtered_cogs):
 
         except Exception as e:
             st.error(f"Gagal menghitung simulasi paket: {e}")
-
 
 # #################################################################
 # --- [PINDAHKAN FUNGSI HELPER LOTTIE/WELCOME/FOOTER KE SINI] ---
@@ -5524,7 +5549,7 @@ def main():
     elif page == "💡 Rekomendasi":
         build_tab9_rekomendasi(filtered_gmv)
     elif page == "💸 Analisis Promo":
-        build_tab10_promo(filtered_cogs)
+        build_tab10_promo(filtered_gmv,filtered_cogs)
 
     # --- 9. FOOTER & SKRIP LAINNYA ---
     build_footer()
