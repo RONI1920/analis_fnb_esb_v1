@@ -4853,7 +4853,7 @@ def build_tab9_rekomendasi(filtered_gmv):
 
     # Panggil fungsi 'pencari insight' kita
     # --- PERBAIKAN DI SINI: Gunakan 'rules_df' untuk insight global, bukan 'filtered_rules' ---
-    insights = generate_recommendation_insights(rules_df)
+    insights = generate_recommendation_insights(filtered_rules)
 
     # Tampilkan dalam expander baru
     with st.expander(
