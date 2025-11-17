@@ -5607,48 +5607,51 @@ import plotly.express as px
 
 def build_tab_unique_features(df_gmv, df_cogs):
     """
-    (VERSI RAPI: MATRIX MENU ENGINEERING)
-    Menghilangkan teks tumpang tindih, nama menu muncul saat di-Hover.
+    (VERSI INTERAKTIF: FILTER TABEL BERDASARKAN KUADRAN)
     """
     st.header("🧪 Lab Strategi & Eksperimen")
     st.caption("Analisis ini menggunakan **SEMUA DATA** (tidak terpengaruh filter tanggal) untuk akurasi strategi.")
 
-    # --- CEK DATA ---
     if df_gmv is None or df_cogs is None:
         st.warning("⚠️ Harap upload **File 1 (GMV)** dan **File 2 (COGS)** di sidebar.")
         return
 
     try:
         # --- 1. PERSIAPAN DATA ---
+        # A. Cari Kolom Harga
+        col_harga_fix = 'Price (Pricelist)'
+        if col_harga_fix not in df_gmv.columns:
+            col_harga_fix = 'Price (Net)' 
         
-        # A. Data Sales (GMV)
+        # B. Agregasi Sales
         df_sales_prep = df_gmv.copy()
         df_sales_prep['Menu_Match'] = df_sales_prep['Menu'].astype(str).str.strip().str.upper()
         
         df_sales_summary = df_sales_prep.groupby('Menu_Match').agg(
             Menu_Asli=('Menu', 'first'),
             Total_Qty=('Qty', 'sum'),
-            Total_Revenue=('Total After Bill Discount', 'sum')
+            Total_Revenue=('Total After Bill Discount', 'sum'),
+            Harga_Jual_Fix=(col_harga_fix, 'mean') 
         ).reset_index()
 
-        # B. Data COGS
+        # C. Agregasi COGS
         df_cogs_prep = df_cogs.copy()
         df_cogs_prep['Menu_Match'] = df_cogs_prep['Menu'].astype(str).str.strip().str.upper()
         
         df_cogs_summary = df_cogs_prep.groupby('Menu_Match').agg(
-            Harga_Jual=('Harga Jual', 'mean'),
-            COGS_Satuan=('COGS', 'mean')
+            COGS_Satuan=('COGS', 'mean') 
         ).reset_index()
 
-        # C. Gabungkan
+        # D. Gabungkan
         df_master = pd.merge(df_sales_summary, df_cogs_summary, on='Menu_Match', how='inner')
         
         if df_master.empty:
             st.error("❌ **DATA TIDAK COCOK!** Tidak ada nama menu yang sama.")
             return
 
-        # D. Hitung Profit
+        # E. Hitung Profit
         df_master['Menu'] = df_master['Menu_Asli']
+        df_master['Harga_Jual'] = df_master['Harga_Jual_Fix'] 
         df_master['Total_COGS'] = df_master['Total_Qty'] * df_master['COGS_Satuan']
         df_master['Gross_Profit'] = df_master['Total_Revenue'] - df_master['Total_COGS']
         
@@ -5656,10 +5659,9 @@ def build_tab_unique_features(df_gmv, df_cogs):
         df_master = df_master[df_master['Total_Qty'] > 0]
         
         # =================================================================
-        # FITUR 1: MATRIX MENU ENGINEERING (GRAFIK RAPI)
+        # FITUR 1: MATRIX MENU ENGINEERING
         # =================================================================
         st.subheader("1. Matrix Menu Engineering")
-        st.info("💡 **Tips:** Arahkan mouse ke titik (bola) untuk melihat Nama Menu dan Detailnya.")
         
         avg_qty = df_master['Total_Qty'].mean()
         avg_profit = df_master['Gross_Profit'].mean()
@@ -5675,35 +5677,24 @@ def build_tab_unique_features(df_gmv, df_cogs):
 
         df_master['Kuadran'] = df_master.apply(get_quadrant, axis=1)
         
-        # Format Data untuk Tooltip
+        # Format Data untuk Tooltip & Tampilan
         df_master['Hover_Profit'] = df_master['Gross_Profit'].apply(format_rupiah)
         df_master['Hover_Revenue'] = df_master['Total_Revenue'].apply(format_rupiah)
         df_master['Hover_Qty'] = df_master['Total_Qty'].apply(lambda x: f"{x:,.0f}")
         
-        # --- GRAFIK SCATTER PLOT YANG SUDAH DIRAPIKAN ---
+        # --- GRAFIK ---
         fig_matrix = px.scatter(
             df_master, 
             x="Total_Qty", 
             y="Gross_Profit", 
             color="Kuadran", 
-            
-            # PERBAIKAN 1: Gunakan hover_name, HAPUS text="Menu"
             hover_name="Menu", 
-            
-            # PERBAIKAN 2: Masukkan data detail ke tooltip
             hover_data={
-                'Kuadran': False, # Sembunyikan karena sudah ada di warna
-                'Total_Qty': False, 
-                'Gross_Profit': False,
-                'Hover_Qty': True,
-                'Hover_Profit': True,
-                'Hover_Revenue': True
+                'Kuadran': False, 'Total_Qty': False, 'Gross_Profit': False,
+                'Hover_Qty': True, 'Hover_Profit': True, 'Hover_Revenue': True
             },
-            
             size="Total_Revenue", 
-            # PERBAIKAN 3: Batasi ukuran bola maksimal agar tidak menutupi
             size_max=40, 
-            
             title="Peta Kekuatan Menu (Stars vs Dogs)",
             color_discrete_map={
                 "⭐ STARS (Laris & Untung)": "#2ecc71", 
@@ -5712,35 +5703,69 @@ def build_tab_unique_features(df_gmv, df_cogs):
                 "🐕 DOGS (Kurang Laku, Rugi)": "#e74c3c"
             }
         )
-        
-        # Custom Tooltip yang Rapi
         fig_matrix.update_traces(
-            hovertemplate="<b>%{hovertext}</b><br>" +
-                        "📦 Terjual: %{customdata[0]}<br>" +
-                        "💰 Profit: %{customdata[1]}<br>" +
-                        "💵 Omzet: %{customdata[2]}<extra></extra>"
+            hovertemplate="<b>%{hovertext}</b><br>📦 Terjual: %{customdata[0]}<br>💰 Profit: %{customdata[1]}<br>💵 Omzet: %{customdata[2]}<extra></extra>"
         )
-
-        # Garis Rata-rata
         fig_matrix.add_hline(y=avg_profit, line_dash="dot", annotation_text="Rata-rata Profit")
         fig_matrix.add_vline(x=avg_qty, line_dash="dot", annotation_text="Rata-rata Qty")
-        
-        # Format Rupiah di Sumbu Y & Label Sumbu
         fig_matrix.update_layout(
-            yaxis=dict(tickprefix="Rp "),
-            xaxis_title="Jumlah Terjual (Qty)",
+            yaxis=dict(tickprefix="Rp "), 
+            xaxis_title="Jumlah Terjual (Qty)", 
             yaxis_title="Total Profit (Gross)",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
         )
         
         st.plotly_chart(fig_matrix, use_container_width=True)
 
+        # --- INTERAKSI: FILTER TABEL DI BAWAH ---
+        st.markdown("---")
+        st.subheader("📋 Detail Menu per Kuadran")
+        st.write("Pilih kategori di bawah ini untuk melihat daftar menu secara spesifik.")
+
+        # Pilihan Kuadran
+        pilihan_kuadran = st.selectbox(
+            "Tampilkan Data:",
+            ["Semua Menu", "⭐ STARS (Laris & Untung)", "🐴 PLOWHORSE (Laris, Margin Tipis)", 
+             "❓ PUZZLE (Jarang Laku, Untung Besar)", "🐕 DOGS (Kurang Laku, Rugi)"]
+        )
+
+        # Filter Dataframe
+        if pilihan_kuadran == "Semua Menu":
+            df_tampil = df_master
+        else:
+            df_tampil = df_master[df_master['Kuadran'] == pilihan_kuadran]
+
+        # Rapikan Kolom untuk Tampilan
+        df_table_view = df_tampil[['Menu', 'Kuadran', 'Total_Qty', 'Harga_Jual', 'COGS_Satuan', 'Gross_Profit']].copy()
+        df_table_view = df_table_view.sort_values('Gross_Profit', ascending=False)
+        
+        # Format Angka di Tabel
+        df_table_view['Total_Qty'] = df_table_view['Total_Qty'].apply(lambda x: f"{x:,.0f}")
+        df_table_view['Harga_Jual'] = df_table_view['Harga_Jual'].apply(format_rupiah)
+        df_table_view['COGS_Satuan'] = df_table_view['COGS_Satuan'].apply(format_rupiah)
+        df_table_view['Gross_Profit'] = df_table_view['Gross_Profit'].apply(format_rupiah)
+
+        st.dataframe(
+            df_table_view, 
+            use_container_width=True,
+            hide_index=True
+        )
+        
+        # Insight Cepat sesuai Pilihan
+        if "STARS" in pilihan_kuadran:
+            st.success("💡 **Tips STARS:** Menu ini sudah sempurna. Pastikan stok tidak pernah kosong dan kualitas rasa konsisten.")
+        elif "DOGS" in pilihan_kuadran:
+            st.error("💡 **Tips DOGS:** Menu ini membebani operasional. Coba ganti resep, ubah nama, atau hapus dari buku menu.")
+        elif "PLOWHORSE" in pilihan_kuadran:
+            st.warning("💡 **Tips PLOWHORSE:** Ini menu populer tapi untungnya tipis. Coba naikkan harga sedikit atau kurangi porsi bahan mahal.")
+        elif "PUZZLE" in pilihan_kuadran:
+            st.info("💡 **Tips PUZZLE:** Untungnya besar tapi jarang dibeli. Perbaiki foto di buku menu atau minta waiter menawarkannya aktif.")
+
         # =================================================================
         # FITUR 2: SIMULATOR PROFIT
         # =================================================================
         st.markdown("---")
         st.subheader("2. 🔮 Simulator Profit")
-        st.write("Simulasikan perubahan harga atau HPP untuk melihat dampaknya.")
         
         menu_list = sorted(df_master['Menu'].unique())
         selected_menu_sim = st.selectbox("Pilih Menu:", options=menu_list)
@@ -5748,31 +5773,31 @@ def build_tab_unique_features(df_gmv, df_cogs):
         if selected_menu_sim:
             item_data = df_master[df_master['Menu'] == selected_menu_sim].iloc[0]
             
-            curr_price = item_data['Harga_Jual']
+            curr_price = item_data['Harga_Jual'] 
             curr_cogs = item_data['COGS_Satuan']
             curr_qty = item_data['Total_Qty']
-            curr_profit_total = item_data['Gross_Profit']
+            curr_profit_total = item_data['Gross_Profit'] 
             
-            st.markdown(f"**Status Saat Ini:** Harga `{format_rupiah(curr_price)}` | HPP `{format_rupiah(curr_cogs)}` | Profit Total `{format_rupiah(curr_profit_total)}`")
+            st.markdown(f"**Status Saat Ini:** Harga List `{format_rupiah(curr_price)}` | HPP `{format_rupiah(curr_cogs)}` | Profit Total `{format_rupiah(curr_profit_total)}`")
 
             col1, col2, col3 = st.columns(3)
             with col1:
-                pct_price = st.slider("Ubah Harga (%)", -50, 50, 0)
+                pct_price = st.slider("Ubah Harga (%)", -100, 100, 0)
                 new_price = curr_price * (1 + pct_price/100)
                 st.metric("Harga Baru", format_rupiah(new_price))
             with col2:
-                pct_cogs = st.slider("Ubah HPP (%)", -50, 50, 0)
+                pct_cogs = st.slider("Ubah HPP (%)", -100, 100, 0)
                 new_cogs = curr_cogs * (1 + pct_cogs/100)
                 st.metric("HPP Baru", format_rupiah(new_cogs))
             with col3:
-                pct_qty = st.slider("Dampak Qty (%)", -50, 50, 0)
+                pct_qty = st.slider("Dampak Qty (%)", -100, 100, 0)
                 new_qty = curr_qty * (1 + pct_qty/100)
                 st.metric("Qty Baru", f"{new_qty:,.0f}")
 
             new_profit_total = (new_price - new_cogs) * new_qty
             delta = new_profit_total - curr_profit_total
             
-            st.metric("Profit Total Baru", format_rupiah(new_profit_total), delta=format_rupiah(delta))
+            st.metric("Estimasi Profit Total Baru", format_rupiah(new_profit_total), delta=format_rupiah(delta))
             
             if delta > 0:
                 st.success("✅ **PROFIT NAIK!** Skenario ini menguntungkan.")
@@ -6078,7 +6103,6 @@ def main():
         filtered_purchase,
     ) = build_global_filters(data_gmv, data_cogs, data_waiter, data_purchase)
 
-
     # #################################################################
     # --- 6. RENDER KONTEN UTAMA (HEADER + TABS ATAU WELCOME) ---
     # #################################################################
@@ -6094,9 +6118,9 @@ def main():
 
     # --- OPSI A: TIDAK ADA DATA SAMA SEKALI (Welcome Screen) ---
     if all_data_is_missing:
-        build_welcome_screen()  
-        build_footer()  
-        st.stop()  
+        build_welcome_screen()
+        build_footer()
+        st.stop()
 
     # --- OPSI B: ADA DATA (Tampilkan Dashboard Lengkap) ---
 
@@ -6156,7 +6180,7 @@ def main():
         "❤️ Ulasan",
         "💡 Rekomendasi",
         "💸 Analisis Promo",
-        "✨ Analisis Musiman Tahunan",  
+        "✨ Analisis Musiman Tahunan",
         "🧪 Lab Strategi",  # <-- Tab Baru (Pastikan ini ada)
     ]
 
@@ -6179,10 +6203,10 @@ def main():
         build_tab8_purchase(filtered_purchase)
     elif page == "⚖️ A/B Comparison":
         # Pastikan fungsi ini dipanggil dengan benar
-        build_tab4_comparison(filtered_gmv, filtered_cogs, filtered_waiter) 
+        build_tab4_comparison(filtered_gmv, filtered_cogs, filtered_waiter)
     elif page == "🎯 Target":
         # Target biasanya pakai data mentah atau difilter, tergantung preferensi
-        build_tab6_target(filtered_gmv) 
+        build_tab6_target(filtered_gmv)
     elif page == "🔮 Forecast (AI)":
         build_tab5_forecast(filtered_gmv)
     elif page == "❤️ Ulasan":
@@ -6194,7 +6218,7 @@ def main():
     elif page == "✨ Analisis Musiman Tahunan":
         build_tab11_musiman(filtered_gmv, data_kalender)
     elif page == "🧪 Lab Strategi":
-        # PENTING: Gunakan data MENTAH (data_gmv, data_cogs) 
+        # PENTING: Gunakan data MENTAH (data_gmv, data_cogs)
         # agar strategi menggunakan seluruh sejarah data
         build_tab_unique_features(data_gmv, data_cogs)
 
