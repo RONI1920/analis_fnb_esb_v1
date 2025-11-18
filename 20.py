@@ -3121,13 +3121,28 @@ def generate_review_insights(
 # #################################################################
 @st.cache_data(show_spinner=False)
 def generate_purchase_insights(
-    total_cost, cost_by_category, cost_by_supplier, top_items
+    total_cost, cost_by_category, cost_by_supplier, top_items, fcp
 ):
     """
     Menganalisis data pembelian yang sudah diproses dan menghasilkan insight
     dalam bahasa alami untuk Tab 8.
     """
     insights = []
+
+    # Tambahkan logika insight FCP
+    if fcp > 0:
+        insights.append(
+            f"💰 **Food Cost Percentage (FCP):** Angka FCP saat ini adalah **{fcp:.1f}%**. Ini adalah metrik krusial yang perlu dipantau terhadap target ideal (biasanya 25%-35%)."
+        )
+
+    # ... (lanjutan logika insight pembelian lainnya) ...
+
+    # Contoh: Insight top cost
+    if not cost_by_category.empty:
+        top_cat = cost_by_category.iloc[0]["Category"]
+        insights.append(
+            f"🛒 **Biaya Terbesar:** Kategori '{top_cat}' menyumbang biaya terbesar, memerlukan perhatian khusus untuk negosiasi atau substitusi."
+        )
 
     if total_cost == 0 or top_items.empty:
         return ["Belum ada data pembelian untuk dianalisis."]
@@ -3234,125 +3249,427 @@ def generate_recommendation_insights(rules_df):
     return insights
 
 
-def build_tab3_hr(filtered_waiter):
-    """Menggambar semua elemen untuk Tab 3.
-    (VERSI BARU DENGAN KOTAK INSIGHT DI BAWAH)
+# ==============================================================================
+#                      FUNGSI ANALISIS KECURANGAN
+# ==============================================================================
+
+
+def get_fraud_analysis(df):
     """
-    if filtered_waiter is not None:
-        if not filtered_waiter.empty:
-            st.header("🧑‍🍳 Analisis Kinerja Waiter & Waktu Kunjungan")
+    Menganalisa kecurangan dengan deteksi anomali berbasis Deviasi Standar.
+    PERBAIKAN: Menggunakan 'Sales Type' sebagai kolom jenis transaksi.
+    """
+    col_waiter = "Waiter"
+    # PERBAIKAN KEY ERROR: Menggunakan nama kolom yang konsisten ('Sales Type')
+    col_type = "Sales Type"
 
-            # 1. Hitung data analisis (sudah di-cache)
-            time_data = get_peak_time_analysis(filtered_waiter)
-            waiter_data = get_waiter_performance(filtered_waiter)
+    # --- 1. DATA CLEANING ---
+    df_clean = df.copy()
 
-            # 2. Expander Waktu Kunjungan (tidak berubah)
-            with st.expander("🕒 Analisis Waktu Kunjungan Pelanggan", expanded=True):
-                st.subheader("🕒 Waktu Kunjungan Pelanggan")
-                sort_order_time = [
-                    "Breakfast/Brunch (10-12)",
-                    "Lunch (12-17)",
-                    "Dinner (17-22)",
-                    "Luar Jam Buka",
-                ]
+    # Guardrail: Pastikan kolom ada sebelum operasi
+    if col_type not in df_clean.columns or col_waiter not in df_clean.columns:
+        # Mengembalikan pesan error yang spesifik
+        return (
+            None,
+            f"Kolom tidak ditemukan. Pastikan ada '{col_waiter}' dan '{col_type}'.",
+        )
 
-                t_col1, t_col2 = st.columns(2)
-                with t_col1:
-                    st.markdown("##### Berdasarkan Jumlah Transaksi")
-                    chart1 = create_vertical_bar_chart(
-                        time_data,
-                        "Waktu Kunjungan",
-                        "Jumlah_Transaksi",
-                        "Waktu Kunjungan",
-                        "Jumlah Transaksi",
-                        x_type="O",
-                        sort_order=sort_order_time,
-                    )
-                    # --- DIGANTI ---
-                    st.plotly_chart(chart1, use_container_width=True)
-                with t_col2:
-                    st.markdown("##### Berdasarkan Total Penjualan")
-                    chart2 = create_vertical_bar_chart(
-                        time_data,
-                        "Waktu Kunjungan",
-                        "Total_Penjualan",
-                        "Waktu Kunjungan",
-                        "Total Penjualan (Rp)",
-                        x_type="O",
-                        sort_order=sort_order_time,
-                    )
-                    # --- DIGANTI ---
-                    st.plotly_chart(chart2, use_container_width=True)
+    # Gabungkan semua variasi void menjadi satu nama 'Void'
+    df_clean[col_type] = df_clean[col_type].replace(
+        {"Void Sales": "Void", "Void sales": "Void", "VOID": "Void"}
+    )
 
-                st.dataframe(
-                    time_data.set_index("Waktu Kunjungan").style.format(
-                        {
-                            "Total_Penjualan": format_rupiah,
-                            "Jumlah_Transaksi": format_angka_bulat,
-                        }
-                    ),
-                    use_container_width=True,
-                )
+    cat_void = "Void"
+    cat_nonsales = "Non Sales"
+    # ------------------------
 
-            st.markdown("---")
+    # --- 2. BUAT TABEL PIVOT (DATA MENTAH) ---
+    fraud_pivot = pd.crosstab(df_clean[col_waiter], df_clean[col_type])
 
-            # 3. Expander Performa Waiter (tidak berubah)
-            with st.expander("🏆 Performa Waiter Teratas (Top 10)", expanded=True):
-                st.subheader("🏆 Performa Waiter Teratas (Top 10)")
-                chart_waiter = create_horizontal_bar_chart(
-                    waiter_data,
-                    "Total_Penjualan",
-                    "Waiter",
-                    "Total Penjualan (Rp)",
-                    "Performa Waiter Teratas (by Penjualan)",
-                )
-                # --- DIGANTI ---
-                st.plotly_chart(chart_waiter, use_container_width=True)
-                st.dataframe(
-                    waiter_data.set_index("Waiter").style.format(
-                        {
-                            "Total_Penjualan": format_rupiah,
-                            "Jumlah_Transaksi": format_angka_bulat,
-                        }
-                    ),
-                    use_container_width=True,
-                )
+    # --- 3. PENGAMANAN & INISIALISASI KOLOM ---
+    if "Void Sales" in fraud_pivot.columns:
+        fraud_pivot = fraud_pivot.drop(columns=["Void Sales"])
 
-            # #############################################################
-            # --- BLOK INSIGHT BARU DITEMPATKAN DI SINI (PALING BAWAH) ---
-            # #############################################################
+    if cat_void not in fraud_pivot.columns:
+        fraud_pivot[cat_void] = 0
+    if cat_nonsales not in fraud_pivot.columns:
+        fraud_pivot[cat_nonsales] = 0
 
-            st.markdown("---")  # Tambahkan pemisah visual
-            st.header("💡 Insight Otomatis (SDM & Waktu)")
+    # --- 4. HITUNG STATISTIK (DETEKSI ANOMALI: Mean + 2 * Std Dev) ---
 
-            # Panggil fungsi 'pencari insight' kita
-            # Kita gunakan data yang sudah dihitung di awal tab ini
-            insights = generate_hr_insights(time_data, waiter_data)
+    # 4.1. Analisa Void
+    void_counts = fraud_pivot[cat_void]
+    avg_void = void_counts.mean()
+    std_void = void_counts.std()
+    threshold_void = np.ceil(max(2.0, avg_void + 2 * std_void))
 
-            # Tampilkan dalam expander baru
-            with st.expander(
-                "Klik untuk melihat Temuan Kunci dari Data SDM & Waktu", expanded=True
-            ):
-                if insights:
-                    for insight in insights:
-                        st.markdown(f"&bull; {insight}")  # Tampilkan sebagai daftar
-                else:
-                    st.info(
-                        "Tidak ada insight otomatis yang dapat dibuat dari data ini."
-                    )
+    suspects_void = fraud_pivot[void_counts > threshold_void].sort_values(
+        by=cat_void, ascending=False
+    )
 
-            # #############################################################
-            # --- BATAS BLOK INSIGHT BARU ---
-            # #############################################################
+    # 4.2. Analisa Non Sales
+    nonsales_counts = fraud_pivot[cat_nonsales]
+    avg_nonsales = nonsales_counts.mean()
+    std_nonsales = nonsales_counts.std()
+    threshold_nonsales = np.ceil(max(3.0, avg_nonsales + 2 * std_nonsales))
 
-        elif filtered_waiter is not None and filtered_waiter.empty:
+    suspects_nonsales = fraud_pivot[nonsales_counts > threshold_nonsales].sort_values(
+        by=cat_nonsales, ascending=False
+    )
+
+    suspects_void_out = suspects_void[[cat_void]]
+    suspects_nonsales_out = suspects_nonsales[[cat_nonsales]]
+
+    return {
+        "raw_data": fraud_pivot,
+        "void": {
+            "suspects": suspects_void_out,
+            "avg": avg_void,
+            "threshold": threshold_void,
+            "std": std_void,
+        },
+        "nonsales": {
+            "suspects": suspects_nonsales_out,
+            "avg": avg_nonsales,
+            "threshold": threshold_nonsales,
+            "std": std_nonsales,
+        },
+    }, "Success"
+
+
+def generate_fraud_insights(fraud_result):
+    """Menghasilkan insight otomatis dari hasil analisis fraud."""
+    insights = []
+
+    if not fraud_result:
+        return ["Analisis deteksi anomali gagal dijalankan."]
+
+    res_void = fraud_result["void"]
+    res_nonsales = fraud_result["nonsales"]
+
+    # 1. Insight Void
+    if not res_void["suspects"].empty:
+        count = len(res_void["suspects"])
+        names = ", ".join(res_void["suspects"].index.tolist()[:3])
+        threshold = res_void["threshold"]
+        insights.append(
+            f"⚠️ **{count} Karyawan (cth: {names}) terindikasi anomali Void.** Jumlah Void mereka melebihi ambang batas {threshold:.0f} kali (Rata-rata Toko + 2 Deviasi Standar)."
+        )
+    else:
+        insights.append(
+            "✅ **Laporan Void:** Tidak ada anomali Void yang terdeteksi secara signifikan."
+        )
+
+    # 2. Insight Non Sales
+    if not res_nonsales["suspects"].empty:
+        count = len(res_nonsales["suspects"])
+        names = ", ".join(res_nonsales["suspects"].index.tolist()[:3])
+        threshold = res_nonsales["threshold"]
+        insights.append(
+            f"🟠 **{count} Karyawan (cth: {names}) terindikasi anomali Non-Sales.** Aktivitas Non-Sales mereka melebihi ambang batas {threshold:.0f} kali."
+        )
+    else:
+        insights.append(
+            "✅ **Laporan Non-Sales:** Tidak ada anomali Non-Sales yang terdeteksi secara signifikan."
+        )
+
+    return insights
+
+
+def get_void_details(df):
+    """
+    Mengambil rincian baris data khusus transaksi VOID.
+    PERBAIKAN: Filter diperluas untuk mencakup semua jenis 'Void'.
+    """
+    # Filter semua variasi Void
+    df_void_details = df[
+        df["Sales Type"].isin(["Void", "Void Sales", "Void sales", "VOID"])
+    ].copy()
+
+    if df_void_details.empty:
+        return None
+
+    # Daftar kemungkinan nama kolom untuk "Alasan"
+    potential_reason_cols = [
+        "Reason",
+        "Void Reason",
+        "Remark",
+        "Notes",
+        "Keterangan",
+        "Alasan",
+    ]
+
+    found_reason_col = "Tidak Ditemukan"
+    for col in potential_reason_cols:
+        if col in df.columns:
+            found_reason_col = col
+            break
+
+    # Pilih kolom yang mau ditampilkan
+    target_cols = ["Sales Date In", "Time", "Waiter", "Total", "Net Sales"]
+
+    if found_reason_col != "Tidak Ditemukan":
+        target_cols.append(found_reason_col)
+
+    final_cols = [c for c in target_cols if c in df.columns]
+
+    return df_void_details[final_cols]
+
+
+# ==============================================================================
+#                      FUNGSI TAMPILAN STREAMLIT (HR TAB)
+# ==============================================================================
+
+
+def build_tab3_hr(filtered_waiter):
+    """Menggambar semua elemen untuk Tab 3."""
+
+    if filtered_waiter is None or filtered_waiter.empty:
+        if filtered_waiter is not None and filtered_waiter.empty:
             st.warning(
                 "Tidak ada data ditemukan di File Rekapitulasi untuk rentang waktu yang dipilih."
             )
-    else:
-        st.info(
-            "Silakan upload file Laporan Rekapitulasi Detail (File 3) di sidebar untuk melihat analisis waiter."
+        else:
+            st.info(
+                "Silakan upload file Laporan Rekapitulasi Detail (File 3) di sidebar untuk melihat analisis waiter."
+            )
+        return
+
+    st.header("🧑‍🍳 Analisis Kinerja Waiter & Waktu Kunjungan")
+
+    time_data = get_peak_time_analysis(filtered_waiter)
+    waiter_data = get_waiter_performance(filtered_waiter)
+
+    # --- BAGIAN 1: WAKTU KUNJUNGAN ---
+    with st.expander("🕒 Analisis Waktu Kunjungan Pelanggan", expanded=True):
+        st.subheader("🕒 Waktu Kunjungan Pelanggan")
+        sort_order_time = [
+            "Breakfast/Brunch (10-12)",
+            "Lunch (12-17)",
+            "Dinner (17-22)",
+            "Luar Jam Buka",
+        ]
+
+        t_col1, t_col2 = st.columns(2)
+        with t_col1:
+            st.markdown("##### Berdasarkan Jumlah Transaksi")
+            chart1 = create_vertical_bar_chart(
+                time_data,
+                "Waktu Kunjungan",
+                "Jumlah_Transaksi",
+                "Waktu Kunjungan",
+                "Jumlah Transaksi",
+                "O",
+                sort_order=sort_order_time,
+            )
+            st.plotly_chart(chart1, use_container_width=True)
+        with t_col2:
+            st.markdown("##### Berdasarkan Total Penjualan")
+            chart2 = create_vertical_bar_chart(
+                time_data,
+                "Waktu Kunjungan",
+                "Total_Penjualan",
+                "Waktu Kunjungan",
+                "Total Penjualan (Rp)",
+                "O",
+                sort_order=sort_order_time,
+            )
+            st.plotly_chart(chart2, use_container_width=True)
+
+        st.dataframe(
+            time_data.set_index("Waktu Kunjungan").style.format(
+                {
+                    "Total_Penjualan": format_rupiah,
+                    "Jumlah_Transaksi": format_angka_bulat,
+                }
+            ),
+            use_container_width=True,
         )
+
+    st.markdown("---")
+
+    # --- BAGIAN 2: PERFORMA WAITER ---
+    with st.expander("🏆 Performa Waiter Teratas (Top 10)", expanded=True):
+        st.subheader("🏆 Performa Waiter Teratas (Top 10)")
+        chart_waiter = create_horizontal_bar_chart(
+            waiter_data,
+            "Total_Penjualan",
+            "Waiter",
+            "Total Penjualan (Rp)",
+            "Performa Waiter Teratas (by Penjualan)",
+        )
+        st.plotly_chart(chart_waiter, use_container_width=True)
+        st.dataframe(
+            waiter_data.set_index("Waiter").style.format(
+                {
+                    "Total_Penjualan": format_rupiah,
+                    "Jumlah_Transaksi": format_angka_bulat,
+                }
+            ),
+            use_container_width=True,
+        )
+
+    st.markdown("---")
+
+    # --- BAGIAN 3: DETEKSI KECURANGAN ---
+    st.header("🕵️ Deteksi Anomali & Potensi Kecurangan")
+    st.caption(
+        "Menganalisa pola transaksi 'Void Sales' dan 'Non Sales' yang tidak wajar."
+    )
+
+    fraud_result, status_msg = get_fraud_analysis(filtered_waiter)
+
+    if fraud_result:
+        tab_void, tab_nonsales, tab_data = st.tabs(
+            ["🔴 Analisa Void", "🟠 Analisa Non-Sales", "📋 Data Mentah"]
+        )
+
+        # 1. ANALISA VOID
+        with tab_void:
+            res_void = fraud_result["void"]
+
+            df_all_voids = filtered_waiter[
+                filtered_waiter["Sales Type"].isin(
+                    ["Void", "Void Sales", "Void sales", "VOID"]
+                )
+            ].copy()
+
+            if not df_all_voids.empty:
+                col_uang = (
+                    "Net Sales" if "Net Sales" in df_all_voids.columns else "Total"
+                )
+
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Total Kejadian Void", f"{len(df_all_voids)} kali")
+
+                if col_uang in df_all_voids.columns:
+                    total_uang = df_all_voids[col_uang].sum()
+                    c2.metric("Total Nilai Void", format_rupiah(total_uang))
+                else:
+                    c2.metric("Total Nilai Void", "Rp 0")
+
+                c3.metric("Rata-rata Void Toko", f"{res_void['avg']:.1f} kali/waiter")
+
+                st.markdown("---")
+
+                st.subheader("📋 Daftar Transaksi Void")
+
+                desired_cols = [
+                    "Sales Date In",
+                    "Time",
+                    "Waiter",
+                    "Qty",
+                    "Net Sales",
+                    "Total",
+                    "Table",
+                    "Section",
+                ]
+
+                final_cols = [c for c in desired_cols if c in df_all_voids.columns]
+                df_display = df_all_voids[final_cols].copy()
+
+                sort_columns = []
+                if "Sales Date In" in df_display.columns:
+                    sort_columns.append("Sales Date In")
+                if "Time" in df_display.columns:
+                    sort_columns.append("Time")
+
+                if sort_columns:
+                    df_display = df_display.sort_values(
+                        by=sort_columns, ascending=False
+                    )
+
+                format_dict = {}
+                col_uang_untuk_total = None  # Ditambahkan untuk Grand Total
+
+                if "Net Sales" in final_cols:
+                    format_dict["Net Sales"] = format_rupiah
+                    col_uang_untuk_total = "Net Sales"
+                elif "Total" in final_cols:
+                    format_dict["Total"] = format_rupiah
+                    col_uang_untuk_total = "Total"
+                if "Qty" in final_cols:
+                    format_dict["Qty"] = "{:.0f}"
+
+                st.dataframe(
+                    df_display.style.format(format_dict),
+                    use_container_width=True,
+                )
+
+                csv = df_all_voids[final_cols].to_csv(index=False).encode("utf-8")
+                st.download_button(
+                    label="📥 Download Data Void (CSV)",
+                    data=csv,
+                    file_name="laporan_void.csv",
+                    mime="text/csv",
+                )
+
+            else:
+                st.success("✅ Bersih! Tidak ada transaksi Void sama sekali.")
+
+            st.markdown("---")
+
+            if not res_void["suspects"].empty:
+                st.error(
+                    f"⚠️ HIGHLIGHT: {len(res_void['suspects'])} Karyawan dengan Void terbanyak (Threshold: {res_void['threshold']:.0f}x):"
+                )
+                st.table(res_void["suspects"].style.highlight_max(axis=0, color="pink"))
+
+        # 2. ANALISA NON-SALES
+        with tab_nonsales:
+            res_nonsales = fraud_result["nonsales"]
+            if not res_nonsales["suspects"].empty:
+                st.error(
+                    f"⚠️ HIGHLIGHT: {len(res_nonsales['suspects'])} Karyawan dengan Non-Sales terbanyak (Threshold: {res_nonsales['threshold']:.0f}x):"
+                )
+                st.table(
+                    res_nonsales["suspects"].style.highlight_max(axis=0, color="orange")
+                )
+                st.caption(
+                    f"Ambang Batas (Threshold): Lebih dari {res_nonsales['threshold']:.0f} kali."
+                )
+            else:
+                st.success("✅ Bersih! Tidak ada anomali Non-Sales yang terdeteksi.")
+                st.caption(
+                    f"Rata-rata Non-Sales: {res_nonsales['avg']:.1f} kali/waiter."
+                )
+
+        # 3. DATA MENTAH
+        with tab_data:
+            st.dataframe(fraud_result["raw_data"], use_container_width=True)
+
+    else:
+        st.warning(f"Gagal menjalankan analisa: {status_msg}")
+
+    st.markdown("---")
+
+    # ============================================================
+    # BAGIAN 4: INSIGHT OTOMATIS (Diperbarui)
+    # ============================================================
+    st.header("💡 Insight Otomatis (SDM, Waktu & Anomali)")  # Judul Diperbarui
+
+    # Panggil fungsi 'pencari insight' kita
+    insights_hr = generate_hr_insights(time_data, waiter_data)
+
+    # Tambahkan Fraud Insight
+    if fraud_result:
+        insights_fraud = generate_fraud_insights(fraud_result)
+        # Gabungkan semua insight
+        all_insights = insights_hr + insights_fraud
+    else:
+        all_insights = insights_hr + [f"Gagal menghasilkan insight fraud: {status_msg}"]
+
+    with st.expander(
+        "Klik untuk melihat Temuan Kunci dari Data SDM, Waktu & Anomali", expanded=True
+    ):
+        if all_insights:
+            for insight in all_insights:
+                st.markdown(f"&bull; {insight}")
+        else:
+            st.info("Tidak ada insight otomatis yang dapat dibuat dari data ini.")
+
+
+# Tab4
 
 
 def build_tab4_comparison(data_gmv, data_cogs, data_waiter):
@@ -4423,8 +4740,11 @@ def build_tab7_ulasan(data_ulasan):
             st.info("Tidak ada insight otomatis yang dapat dibuat dari data ini.")
 
 
-def build_tab8_purchase(filtered_purchase):
-    """Menggambar Tab 8 (Analisis Laporan Pembelian)."""
+def build_tab8_purchase(filtered_purchase, total_sales_revenue):
+    """
+    Menggambar Tab 8 (Analisis Laporan Pembelian).
+    DIPERBAIKI: Menambahkan perhitungan dan tampilan Food Cost Percentage (FCP).
+    """
     st.header("🛒 Analisis Biaya Pembelian (Purchase)")
     st.info(
         "Tab ini menganalisis Laporan Pembelian (File 5) untuk melacak "
@@ -4452,15 +4772,44 @@ def build_tab8_purchase(filtered_purchase):
         raw_data_filtered,
     ) = analyze_purchase_data(filtered_purchase)
 
-    # --- 2. Tampilkan Metrik KPI ---
-    st.subheader("📊 KPI Biaya Pembelian")
-    st.metric(
-        "Total Biaya Pembelian (Tercatat)",
-        format_rupiah(total_cost),
-        help="Total dari kolom 'Total' di mana nilainya > 0.",
-    )
+    # --- 2. Perhitungan Food Cost Percentage (FCP) ---
+    # Food Cost Percentage (FCP) = (Total Biaya Pembelian / Total Sales Revenue) * 100
+    fcp = 0
+    # Guardrail: Jika revenue > 0, hitung FCP.
+    if total_sales_revenue is not None and total_sales_revenue > 0:
+        fcp = (total_cost / total_sales_revenue) * 100
 
-    # --- 3. Tampilkan Grafik Analisis ---
+    # --- 3. Tampilkan Metrik KPI ---
+    st.subheader("📊 KPI Biaya Pembelian & Food Cost")
+
+    # 🌟 PERBAIKAN: Gunakan 3 kolom untuk menampilkan kedua input dan hasil FCP
+    col_kpi_1, col_kpi_2, col_kpi_3 = st.columns(3)
+
+    with col_kpi_1:
+        st.metric(
+            "Total Biaya Pembelian (Numerator)",
+            format_rupiah(total_cost),
+            help="Total Cost (Pembilang FCP). Jika 0, FCP akan 0%.",
+        )
+
+    with col_kpi_2:
+        # 🌟 DEBUG METRIC: Tampilkan Total Sales Revenue sebagai input
+        st.metric(
+            "Total Sales Revenue (Denominator)",
+            format_rupiah(total_sales_revenue if total_sales_revenue else 0),
+            help="Total Net Sales dari GMV (Penyebut FCP). Jika 0, FCP akan 0%.",
+        )
+
+    with col_kpi_3:
+        # Tampilkan Food Cost Percentage
+        st.metric(
+            "Food Cost Percentage (FCP)",
+            f"{fcp:.1f}%",
+            help="Dihitung dari (Total Pembelian / Total Sales Revenue) * 100.",
+        )
+
+    # --- 4. Tampilkan Grafik Analisis ---
+    # ... (Sisa kode visualisasi tetap sama) ...
     st.markdown("---")
     st.subheader("📈 Analisis Rincian Biaya")
 
@@ -4510,7 +4859,7 @@ def build_tab8_purchase(filtered_purchase):
     else:
         st.info("Tidak ada data item termahal.")
 
-    # --- 4. Tampilkan Data Mentah ---
+    # --- 5. Tampilkan Data Mentah ---
     with st.expander("Lihat Rincian Data Pembelian (Sudah Difilter)"):
         st.dataframe(
             raw_data_filtered.style.format(
@@ -4519,11 +4868,12 @@ def build_tab8_purchase(filtered_purchase):
             use_container_width=True,
         )
 
-    # --- 5. Blok Insight (PALING BAWAH) ---
+    # --- 6. Blok Insight ---
     st.markdown("---")
     st.header("💡 Insight Otomatis (Analisis Pembelian)")
+    # Insight harus diperbarui untuk menyertakan FCP
     insights = generate_purchase_insights(
-        total_cost, cost_by_category, cost_by_supplier, top_items
+        total_cost, cost_by_category, cost_by_supplier, top_items, fcp
     )
     with st.expander(
         "Klik untuk melihat Temuan Kunci dari Biaya Pembelian", expanded=True
@@ -6011,7 +6361,7 @@ def build_welcome_screen():
         """
     * **📊 Analisis Penjualan (GMV):** Lihat performa penjualan, menu terlaris, dan jam sibuk.
     * **💰 Analisis COGS & Profit:** Temukan menu mana yang paling *profitabel*, bukan hanya paling laku.
-    * **🧑‍🍳 Kinerja SDM:** Lacak performa waiter dan lihat siapa top sales Anda.
+    * **🧑‍🍳 Kinerja SDM:** Lacak performa waiter, Cek Anomali Transaksi dan lihat siapa top sales Anda.
     * **🛒 Biaya Pembelian:** Kontrol pengeluaran dengan menganalisis biaya per supplier dan per item.
     * **⚖️ A/B Comparison:** Bandingkan kinerja 'Minggu Ini' vs 'Minggu Lalu' secara berdampingan.
     * **🎯 Pelacakan Target:** Masukkan target bulanan Anda dan lihat proyeksi pencapaian secara *real-time*.
@@ -6050,13 +6400,17 @@ def build_footer():
 # #################################################################
 # --- BAGIAN 4: FUNGSI UTAMA (MAIN) ---
 # #################################################################
+import pandas as pd
+import streamlit as st
+
+# Asumsikan semua fungsi helper (init_db, load_css, load_data_gmv, build_sidebar, etc.) sudah diimpor
+
+
 def main():
     """Fungsi utama untuk menjalankan aplikasi Streamlit."""
 
     # Inisialisasi Database
     init_db()
-
-    # Muat CSS
     load_css("style.css")
 
     # #############################################################
@@ -6168,6 +6522,38 @@ def main():
     # --- 6. RENDER KONTEN UTAMA (HEADER + TABS ATAU WELCOME) ---
     # #################################################################
 
+    # 🌟 PERBAIKAN: Hitung Total Revenue di sini (Memperkenalkan Fallback Kolom)
+    total_sales_revenue = 0
+
+    if filtered_gmv is not None and not filtered_gmv.empty:
+
+        # --- Tentukan Kolom Revenue yang Paling Mungkin Benar ---
+        revenue_col = None
+        if "Total Nett Sales" in filtered_gmv.columns:
+            # Pilihan 1: Paling Akurat berdasarkan kolom di loader
+            revenue_col = "Total Nett Sales"
+        elif "Net Sales" in filtered_gmv.columns:
+            # Pilihan 2: Fallback (jika loader hanya menghasilkan Net Sales)
+            revenue_col = "Net Sales"
+        elif "Total Gross Sales" in filtered_gmv.columns:
+            # Pilihan 3: Fallback ke Gross Sales jika tidak ada Net (KURANG AKURAT untuk FCP)
+            revenue_col = "Total Gross Sales"
+
+        if revenue_col:
+            # --- LANGKAH KRITIS: Konversi Numerik Aman dan Penjumlahan ---
+            # Ini mengatasi masalah di mana filtering mengubah tipe data menjadi 'object' atau ada nilai non-numerik.
+            filtered_gmv[revenue_col] = pd.to_numeric(
+                filtered_gmv[revenue_col], errors="coerce"
+            ).fillna(0)
+
+            # Perhitungan Penjumlahan
+            total_sales_revenue = filtered_gmv[revenue_col].sum()
+
+            if total_sales_revenue == 0 and filtered_gmv.shape[0] > 0:
+                st.warning(
+                    f"Peringatan: Kolom '{revenue_col}' terdeteksi, tetapi jumlah revenue nol setelah filter. Cek data GMV untuk periode ini."
+                )
+
     # Cek apakah SEMUA data kosong.
     all_data_is_missing = (
         data_gmv is None
@@ -6233,7 +6619,7 @@ def main():
     page_options = [
         "📊 Penjualan (GMV)",
         "💰 COGS & Profit",
-        "🧑‍🍳 SDM & Waktu",
+        "🧑‍🍳 SDM & Waktu Sibuk",
         "🛒 Pembelian",
         "⚖️ A/B Comparison",
         "🎯 Target",
@@ -6242,7 +6628,7 @@ def main():
         "💡 Rekomendasi",
         "💸 Analisis Promo",
         "✨ Analisis Musiman Tahunan",
-        "🧪 Lab Strategi",  # <-- Tab Baru (Pastikan ini ada)
+        "🧪 Lab Strategi",
     ]
 
     # Menggunakan st.selectbox untuk dropdown list
@@ -6258,15 +6644,15 @@ def main():
         build_tab1_sales(filtered_gmv)
     elif page == "💰 COGS & Profit":
         build_tab2_cogs(filtered_cogs)
-    elif page == "🧑‍🍳 SDM & Waktu":
+    elif page == "🧑‍🍳 SDM & Waktu Sibuk":
         build_tab3_hr(filtered_waiter)
     elif page == "🛒 Pembelian":
-        build_tab8_purchase(filtered_purchase)
+        # 🌟 PERBAIKAN: Meneruskan total_sales_revenue
+        build_tab8_purchase(filtered_purchase, total_sales_revenue)
     elif page == "⚖️ A/B Comparison":
         # Pastikan fungsi ini dipanggil dengan benar
         build_tab4_comparison(filtered_gmv, filtered_cogs, filtered_waiter)
     elif page == "🎯 Target":
-        # Target biasanya pakai data mentah atau difilter, tergantung preferensi
         build_tab6_target(filtered_gmv)
     elif page == "🔮 Forecast (AI)":
         build_tab5_forecast(filtered_gmv)
@@ -6279,8 +6665,6 @@ def main():
     elif page == "✨ Analisis Musiman Tahunan":
         build_tab11_musiman(filtered_gmv, data_kalender)
     elif page == "🧪 Lab Strategi":
-        # PENTING: Gunakan data MENTAH (data_gmv, data_cogs)
-        # agar strategi menggunakan seluruh sejarah data
         build_tab_unique_features(data_gmv, data_cogs)
 
     # --- 9. FOOTER & SKRIP LAINNYA ---
