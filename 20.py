@@ -87,15 +87,14 @@ def get_db_connection():
 
 def init_db():
     """
-    Membuat skema tabel database yang BENAR jika belum ada.
-    Ini adalah pondasi agar 'Smart Append' berfungsi.
+    Membuat skema tabel database yang BENAR.
+    DIPERBARUI: Menambahkan kolom 'Sales Type' agar data Void/Sales tersimpan.
     """
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # 1. Skema Tabel GMV (DIPERBAIKI)
-        # Disesuaikan dengan gambar skema Anda
+        # 1. Skema Tabel GMV (DIPERBAIKI - Ditambah Sales Type)
         cursor.execute(
             """
         CREATE TABLE IF NOT EXISTS gmv_data (
@@ -104,7 +103,8 @@ def init_db():
             "Bill Number" TEXT,
             "Menu" TEXT,
             "Menu Code" TEXT,
-            "Sales Number" TEXT,          -- <-- TAMBAHAN BARU SESUAI GAMBAR
+            "Sales Number" TEXT,
+            "Sales Type" TEXT,          -- <--- TAMBAHAN PENTING DI SINI!
             "Qty" REAL,
             "Price (Net)" REAL,
             "Service Charge" REAL,
@@ -130,7 +130,8 @@ def init_db():
         """
         )
 
-        # 2. Skema Tabel COGS (Sudah Sesuai)
+        # ... (Sisa tabel cogs_data, waiter_data, dll biarkan tetap sama) ...
+        # 2. Skema Tabel COGS
         cursor.execute(
             """
         CREATE TABLE IF NOT EXISTS cogs_data (
@@ -146,7 +147,7 @@ def init_db():
         """
         )
 
-        # 3. Skema Tabel Waiter (Sudah Sesuai)
+        # 3. Skema Tabel Waiter
         cursor.execute(
             """
         CREATE TABLE IF NOT EXISTS waiter_data (
@@ -154,12 +155,13 @@ def init_db():
             "Waiter" TEXT,
             "Order Time" DATETIME,
             "Total After Bill Discount" REAL,
-            "Branch" TEXT
+            "Branch" TEXT,
+            "Sales Type" TEXT           -- <--- OPSI: Tambahkan di sini juga jika perlu untuk Tab 3
         );
         """
         )
 
-        # 4. Skema Tabel Ulasan (Sudah Sesuai)
+        # 4. Skema Tabel Ulasan
         cursor.execute(
             """
         CREATE TABLE IF NOT EXISTS ulasan_data (
@@ -171,7 +173,7 @@ def init_db():
         """
         )
 
-        # 5. Skema Tabel Purchase (Sudah Sesuai)
+        # 5. Skema Tabel Purchase
         cursor.execute(
             """
         CREATE TABLE IF NOT EXISTS purchase_data (
