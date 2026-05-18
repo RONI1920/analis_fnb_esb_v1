@@ -5,6 +5,9 @@ build/
 dist/
 wheels/
 *.egg-info
+*.db
+sqlite3.exe
+sqlite-tools-win-x64-3510000/
 
 # Virtual environments
 .venv
