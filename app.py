@@ -2410,7 +2410,6 @@ def build_tab1_sales(filtered_gmv):
                     "🛍️ Item per Transaksi (IPB)",
                     f"{kpi['Item per Transaksi (IPB)']:.2f}",
                 )
-            # ← tutup with di sini, tidak ada indentasi untuk expander berikutnya
 
             with st.expander(
                 "Lihat Rincian Pendapatan (Diskon, Service, Pajak)", expanded=True
@@ -2444,6 +2443,14 @@ def build_tab1_sales(filtered_gmv):
                         .sum()
                         .reset_index()
                     )
+
+                    if data_kategori.empty:
+                        st.warning("Tidak ada data kategori untuk ditampilkan.")
+                    else:
+                        data_kategori_sorted = data_kategori.sort_values(
+                            "Qty", ascending=False
+                        )
+
                     data_kategori_sorted = data_kategori.sort_values(
                         "Qty", ascending=False
                     )
