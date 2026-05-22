@@ -2498,83 +2498,54 @@ def build_tab1_sales(filtered_gmv):
                         .reset_index()
                     )
 
-                    selection_kategori = alt.selection_point(fields=["Menu Category"])
+                    # Grafik Kategori (Plotly)
+                fig_kategori = px.bar(
+                    data_untuk_grafik_atas,
+                    x="Qty",
+                    y="Menu Category",
+                    orientation="h",
+                    title=title_grafik_atas,
+                    color="Qty",
+                    color_continuous_scale="Blues",
+                    template="plotly_dark",
+                )
+                fig_kategori.update_layout(
+                    yaxis={"categoryorder": "total ascending"},
+                    coloraxis_showscale=False,
+                    xaxis={"side": "top"},
+                    margin=dict(l=0, r=20, t=60, b=20),
+                )
+                st.plotly_chart(fig_kategori, use_container_width=True)
 
-                    bar_height_px = 25
-                    max_height_before_scroll = 400
-                    min_height_px = 150
-                    num_bars_kategori = len(data_untuk_grafik_atas)
-                    ideal_height = num_bars_kategori * bar_height_px
+                # Selectbox untuk drill-down
+                selected_cat = st.selectbox(
+                    "🔍 Pilih Kategori untuk melihat detail menu:",
+                    options=["(Pilih Kategori)"]
+                    + data_untuk_grafik_atas["Menu Category"].tolist(),
+                    key="selectbox_kategori_tab1",
+                )
 
-                    chart_height_kategori = min(
-                        max(ideal_height, min_height_px), max_height_before_scroll
+                if selected_cat != "(Pilih Kategori)":
+                    detail_data = data_menu_item[
+                        data_menu_item["Menu Category"] == selected_cat
+                    ]
+                    fig_detail = px.bar(
+                        detail_data,
+                        x="Qty",
+                        y="Menu",
+                        orientation="h",
+                        title=f"Detail Menu: {selected_cat}",
+                        color="Qty",
+                        color_continuous_scale="Oranges",
+                        template="plotly_dark",
                     )
-
-                    chart_kategori = (
-                        alt.Chart(data_untuk_grafik_atas)
-                        .mark_bar()
-                        .encode(
-                            x=alt.X(
-                                "Qty:Q",
-                                title="Total Kuantiti Terjual",
-                                axis=alt.Axis(orient="top"),
-                            ),
-                            y=alt.Y(
-                                "Menu Category:N",
-                                title="Kategori Menu",
-                                sort="-x",
-                                axis=alt.Axis(labelLimit=300),
-                            ),
-                            tooltip=["Menu Category", "Qty"],
-                            color=alt.condition(
-                                selection_kategori,
-                                alt.value("orange"),
-                                alt.value("steelblue"),
-                            ),
-                        )
-                        .add_params(selection_kategori)
-                        .properties(
-                            title=title_grafik_atas,
-                            height=chart_height_kategori,
-                        )
+                    fig_detail.update_layout(
+                        yaxis={"categoryorder": "total ascending"},
+                        coloraxis_showscale=False,
+                        xaxis={"side": "top"},
+                        margin=dict(l=0, r=20, t=60, b=20),
                     )
-
-                    num_bars_detail = len(data_menu_item["Menu"].unique())
-                    ideal_height_detail = num_bars_detail * bar_height_px
-                    chart_height_detail = min(
-                        max(ideal_height_detail, min_height_px),
-                        max_height_before_scroll,
-                    )
-
-                    chart_detail = (
-                        alt.Chart(data_menu_item)
-                        .mark_bar()
-                        .encode(
-                            x=alt.X(
-                                "Qty:Q",
-                                title="Total Kuantiti Terjual",
-                                axis=alt.Axis(orient="top"),
-                            ),
-                            y=alt.Y(
-                                "Menu:N",
-                                title="Menu Item",
-                                sort="-x",
-                                axis=alt.Axis(labelLimit=300),
-                            ),
-                            tooltip=["Menu Category", "Menu", "Qty"],
-                        )
-                        .transform_filter(selection_kategori)
-                        .properties(
-                            title="Detail Penjualan per Menu Item (Berdasarkan Kategori Dipilih)",
-                            height=chart_height_detail,
-                        )
-                    )
-
-                    combined_chart = alt.vconcat(
-                        chart_kategori, chart_detail, spacing=40
-                    ).resolve_scale(y="independent")
-
-                    st.altair_chart(combined_chart, use_container_width=True)
+                    st.plotly_chart(fig_detail, use_container_width=True)
 
             elif "Menu Category" in filtered_gmv.columns:
                 st.warning("Data kategori menu tidak ditemukan untuk periode ini.")
@@ -2601,7 +2572,6 @@ def build_tab1_sales(filtered_gmv):
                             {"Total Nett Sales": format_rupiah}
                         )
                     )
-
 
             # === 4. URUTAN BARU 3: TOP 10 MENU ===
             with st.expander("🏆 KPI Kinerja Menu (Top 10 Selling/Grossing)"):
