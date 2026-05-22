@@ -1,13 +1,63 @@
-# Python-generated files
+# =========================
+# Python
+# =========================
 __pycache__/
-*.py[oc]
+*.py[cod]
+*$py.class
+
+# Build
 build/
 dist/
 wheels/
-*.egg-info
+*.egg-info/
+
+# =========================
+# Database
+# =========================
 *.db
+*.sqlite3
+
+# SQLite tools
 sqlite3.exe
 sqlite-tools-win-x64-3510000/
 
-# Virtual environments
-.venv
+# =========================
+# Virtual Environment
+# =========================
+.venv/
+venv/
+env/
+
+# =========================
+# Streamlit
+# =========================
+.streamlit/secrets.toml
+
+# =========================
+# VS Code
+# =========================
+.vscode/
+
+# =========================
+# OS Files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Logs & Cache
+# =========================
+*.log
+.cache/
+
+# =========================
+# Uploaded / Export Files
+# =========================
+uploads/
+exports/
+temp/
+
+# =========================
+# Jupyter
+# =========================
+.ipynb_checkpoints/

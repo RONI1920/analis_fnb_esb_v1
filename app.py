@@ -1921,6 +1921,8 @@ def build_sidebar():
         st.session_state.waiter_saved_status = False
         st.session_state.ulasan_saved_status = False
         st.session_state.purchase_saved_status = False
+        st.session_state.pl_saved_status = False       # ← TAMBAH INI
+        st.session_state.use_db_widget_key = False     # ← TAMBAH INI
 
     # #################################################################
     # --- BATAS FUNGSI BARU ---
@@ -2074,16 +2076,6 @@ def build_sidebar():
         purchase_file,
         pl_file,  # <--- Tambahkan ini
         st.session_state.use_db,
-    )
-
-    # Kembalikan file DAN status checkbox
-    return (
-        gmv_file,
-        cogs_file,
-        waiter_file,
-        ulasan_file,
-        purchase_file,
-        st.session_state.use_db,  # Kita tetap kembalikan var KONTROL kita
     )
 
 
@@ -7851,20 +7843,31 @@ def build_footer():
 def main():
     """Fungsi utama untuk menjalankan aplikasi Streamlit."""
 
-    # Inisialisasi Database
     init_db()
     require_auth()
     load_css("style.css")
 
     # #############################################################
-    # --- 1. INISIALISASI SESSION STATE ---
+    # --- 1. INISIALISASI SESSION STATE (LENGKAP) ---
     # #############################################################
-    # ... (Biarkan kode session state Anda yang panjang itu, tidak perlu diubah) ...
-    # Pastikan state untuk P&L ada:
-    if "save_pl_flag" not in st.session_state:
-        st.session_state.save_pl_flag = False
-    if "pl_saved_status" not in st.session_state:
-        st.session_state.pl_saved_status = False
+    defaults = {
+        "save_gmv_flag":      False,
+        "save_cogs_flag":     False,
+        "save_waiter_flag":   False,
+        "save_ulasan_flag":   False,
+        "save_purchase_flag": False,
+        "save_pl_flag":       False,
+        "gmv_saved_status":      False,
+        "cogs_saved_status":     False,
+        "waiter_saved_status":   False,
+        "ulasan_saved_status":   False,
+        "purchase_saved_status": False,
+        "pl_saved_status":       False,
+        "use_db": False,
+    }
+    for key, val in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = val
 
     # #############################################################
     # --- 2. SIDEBAR ---
@@ -7875,209 +7878,191 @@ def main():
         waiter_file,
         ulasan_file,
         purchase_file,
-        pl_file,  # <--- Pastikan ini diterima dari sidebar
+        pl_file,
         use_db,
     ) = build_sidebar()
 
     # #############################################################
     # --- 3. PEMUATAN DATA ---
     # #############################################################
-
-    # 1. Load GMV
     data_gmv, file_company, file_period, file_branch = load_data_gmv(gmv_file, use_db)
-
-    # 2. Inisialisasi variabel data_pl DULU biar tidak error "Not Defined"
-    data_pl = None  # <--- (PENTING! JANGAN DIHAPUS)
+    data_pl = None
 
     with st.spinner("Memuat data pendukung..."):
-        data_cogs = load_cogs_data(cogs_file, use_db)
-        data_waiter = load_data_waiter(waiter_file, use_db)
-        data_ulasan = load_data_ulasan(ulasan_file, use_db)
+        data_cogs     = load_cogs_data(cogs_file, use_db)
+        data_waiter   = load_data_waiter(waiter_file, use_db)
+        data_ulasan   = load_data_ulasan(ulasan_file, use_db)
         data_purchase = load_data_purchase(purchase_file, use_db)
-
-        # 3. Load Data P&L (Isi variabel data_pl di sini)
-        data_pl = load_pl_data(pl_file, use_db)  # <--- (PENTING! PEMANGGILAN FUNGSI)
-
-        # Muat data kalender
+        data_pl       = load_pl_data(pl_file, use_db)
         data_kalender = load_kalender_data("kalender/kalender_event1.csv")
 
     # #############################################################
-    # --- 4. LOGIKA PENYIMPANAN DATA ---
+    # --- 4. LOGIKA PENYIMPANAN DATA (LENGKAP) ---
     # #############################################################
+# SESUDAH (yang benar)
+        def clear_db_cache_and_rerun():
+            load_dataframe_from_db.clear()
+            load_data_gmv.clear()
+            load_cogs_data.clear()
+            load_data_waiter.clear()
+            load_data_ulasan.clear()
+            load_data_purchase.clear()
+            load_pl_data.clear()
+            st.session_state.use_db = True
+            # Hapus key widget agar Streamlit re-inisialisasi dengan value baru
+            if "use_db_widget_key" in st.session_state:
+                del st.session_state["use_db_widget_key"]
+            st.rerun()
 
-    def clear_db_cache_and_rerun():
-        load_dataframe_from_db.clear()
-        st.session_state.use_db = True
-        st.rerun()
+        if st.session_state.save_gmv_flag:
+            if data_gmv is not None:
+                save_dataframe_smart_append(data_gmv, "gmv_data", "Sales Date In")
+                st.session_state.gmv_saved_status = True
+            st.session_state.save_gmv_flag = False
+            clear_db_cache_and_rerun()
 
-    # ... (Kode simpan GMV, COGS, Waiter, Ulasan, Purchase tetap sama) ...
+        if st.session_state.save_cogs_flag:
+            if data_cogs is not None:
+                save_dataframe_smart_append(data_cogs, "cogs_data", "Sales Date")
+                st.session_state.cogs_saved_status = True
+            st.session_state.save_cogs_flag = False
+            clear_db_cache_and_rerun()
 
-    # Logika Simpan P&L (BARU)
-    if st.session_state.save_pl_flag:
-        if data_pl is not None:
-            save_dataframe_smart_append(data_pl, "pl_data", "Date")
-            st.session_state.pl_saved_status = True
+        if st.session_state.save_waiter_flag:
+            if data_waiter is not None:
+                save_dataframe_smart_append(data_waiter, "waiter_data", "Order Time")
+                st.session_state.waiter_saved_status = True
+            st.session_state.save_waiter_flag = False
+            clear_db_cache_and_rerun()
+
+        if st.session_state.save_ulasan_flag:
+            if data_ulasan is not None:
+                save_dataframe_to_db(data_ulasan, "ulasan_data")
+                st.session_state.ulasan_saved_status = True
+            st.session_state.save_ulasan_flag = False
+            clear_db_cache_and_rerun()
+
+        if st.session_state.save_purchase_flag:
+            if data_purchase is not None:
+                save_dataframe_smart_append(data_purchase, "purchase_data", "Purchase Date")
+                st.session_state.purchase_saved_status = True
+            st.session_state.save_purchase_flag = False
+            clear_db_cache_and_rerun()
+
+        if st.session_state.save_pl_flag:
+            if data_pl is not None:
+                save_dataframe_smart_append(data_pl, "pl_data", "Date")
+                st.session_state.pl_saved_status = True
             st.session_state.save_pl_flag = False
             clear_db_cache_and_rerun()
 
-    # #############################################################
-    # --- 5. FILTER GLOBAL ---
-    # #############################################################
-    (
-        filtered_gmv,
-        filtered_cogs,
-        filtered_waiter,
-        filtered_purchase,
-        filtered_pl,
-    ) = build_global_filters(
-        data_gmv,
-        data_cogs,
-        data_waiter,
-        data_purchase,
-        data_pl,
-    )
-
-    # #################################################################
-    # --- 6. RENDER KONTEN UTAMA ---
-    # #################################################################
-
-    # Hitung Total Revenue untuk FCP
-    total_sales_revenue = 0
-    if filtered_gmv is not None and not filtered_gmv.empty:
-        # ... (Logika hitung revenue tetap sama) ...
-        revenue_col = None
-        if "Total Nett Sales" in filtered_gmv.columns:
-            revenue_col = "Total Nett Sales"
-        elif "Net Sales" in filtered_gmv.columns:
-            revenue_col = "Net Sales"
-        elif "Total Gross Sales" in filtered_gmv.columns:
-            revenue_col = "Total Gross Sales"
-
-        if revenue_col:
-            filtered_gmv[revenue_col] = pd.to_numeric(
-                filtered_gmv[revenue_col], errors="coerce"
-            ).fillna(0)
-            total_sales_revenue = filtered_gmv[revenue_col].sum()
-
-    # --- LOGIKA PENENTU (Welcome Screen vs Dashboard) ---
-    # Sekarang data_pl sudah didefinisikan di atas, jadi aman dipakai di sini.
-    all_data_is_missing = (
-        data_gmv is None
-        and data_cogs is None
-        and data_waiter is None
-        and data_ulasan is None
-        and data_purchase is None
-        and data_pl
-        is None  # <--- Tidak akan error lagi karena data_pl sudah ada nilainya (None atau DataFrame)
-    )
-
-    # OPSI A: TIDAK ADA DATA SAMA SEKALI -> Tampilkan Welcome Screen
-    if all_data_is_missing:
-        build_welcome_screen()
-        build_footer()
-        st.stop()
-
-    # OPSI B: ADA DATA -> Tampilkan Dashboard
-
-    # ... (Kode Header Dinamis tetap sama) ...
-    # Tampilkan Header standar jika GMV kosong tapi file lain ada
-    if not all_data_is_missing and data_gmv is None:
-        st.title("Dashboard Analisis Data F&B")
-        st.info(
-            "Mode analisis parsial. Beberapa fitur mungkin nonaktif karena data GMV tidak ada."
+        # #############################################################
+        # --- 5. FILTER GLOBAL ---
+        # #############################################################
+        (
+            filtered_gmv,
+            filtered_cogs,
+            filtered_waiter,
+            filtered_purchase,
+            filtered_pl,
+        ) = build_global_filters(
+            data_gmv, data_cogs, data_waiter, data_purchase, data_pl,
         )
 
-    # #############################################################
-    # --- 7. NAVIGASI HALAMAN ---
-    # #############################################################
-    st.divider()
+        # #############################################################
+        # --- 6. RENDER KONTEN UTAMA ---
+        # #############################################################
+        total_sales_revenue = 0
+        if filtered_gmv is not None and not filtered_gmv.empty:
+            revenue_col = None
+            if "Total Nett Sales" in filtered_gmv.columns:
+                revenue_col = "Total Nett Sales"
+            elif "Net Sales" in filtered_gmv.columns:
+                revenue_col = "Net Sales"
+            elif "Total Gross Sales" in filtered_gmv.columns:
+                revenue_col = "Total Gross Sales"
+            if revenue_col:
+                filtered_gmv[revenue_col] = pd.to_numeric(
+                    filtered_gmv[revenue_col], errors="coerce"
+                ).fillna(0)
+                total_sales_revenue = filtered_gmv[revenue_col].sum()
 
-    page_options = [
-        "📊 Penjualan (GMV)",
-        "💰 COGS & Profit",
-        "🧑‍🍳 SDM & Waktu Sibuk",
-        "🛒 Pembelian",
-        "⚖️ A/B Comparison",
-        "🎯 Target",
-        "🔮 Forecast (AI)",
-        "❤️ Ulasan",
-        "💡 Rekomendasi",
-        "💸 Analisis Promo",
-        "✨ Analisis Musiman Tahunan",
-        "🧪 Lab Strategi",
-        "📉 Laporan Laba Rugi (P&L)",
-        "🛠️ Admin Panel", 
-    ]
+        all_data_is_missing = (
+            data_gmv is None
+            and data_cogs is None
+            and data_waiter is None
+            and data_ulasan is None
+            and data_purchase is None
+            and data_pl is None
+        )
 
-    page = st.selectbox("Pilih Halaman Analisis:", page_options, key="nav_select")
-    st.divider()
+        if all_data_is_missing:
+            build_welcome_screen()
+            build_footer()
+            st.stop()
 
-    # #############################################################
-    # --- 8. RENDER HALAMAN ---
-    # #############################################################
+        if not all_data_is_missing and data_gmv is None:
+            st.title("Dashboard Analisis Data F&B")
+            st.info("Mode analisis parsial. Beberapa fitur mungkin nonaktif karena data GMV tidak ada.")
 
-    if page == "📊 Penjualan (GMV)":
-        build_tab1_sales(filtered_gmv)
-    elif page == "💰 COGS & Profit":
-        build_tab2_cogs(filtered_cogs)
-    elif page == "🧑‍🍳 SDM & Waktu Sibuk":
-        build_tab3_hr(filtered_waiter)
-    elif page == "🛒 Pembelian":
-        build_tab8_purchase(filtered_purchase, total_sales_revenue)
-    elif page == "⚖️ A/B Comparison":
-        build_tab4_comparison(filtered_gmv, filtered_cogs, filtered_waiter)
-    elif page == "🎯 Target":
-        build_tab6_target(filtered_gmv)
-    elif page == "🔮 Forecast (AI)":
-        build_tab5_forecast(filtered_gmv)
-    elif page == "❤️ Ulasan":
-        build_tab7_ulasan(data_ulasan)
-    elif page == "💡 Rekomendasi":
-        build_tab9_rekomendasi(filtered_gmv)
-    elif page == "💸 Analisis Promo":
-        build_tab10_promo(filtered_gmv, filtered_cogs)
-    elif page == "✨ Analisis Musiman Tahunan":
-        build_tab11_musiman(filtered_gmv, data_kalender)
-    elif page == "🧪 Lab Strategi":
-        build_tab_unique_features(data_gmv, data_cogs)
-    elif page == "📉 Laporan Laba Rugi (P&L)":
-        build_tab13_pl(data_pl)  # <--- Panggil Fungsi UI Baru
-    elif page == "🛠️ Admin Panel":
-        build_admin_panel()
+        # #############################################################
+        # --- 7. NAVIGASI HALAMAN ---
+        # #############################################################
+        st.divider()
 
-    # --- 9. FOOTER & SKRIP LAINNYA ---
-    build_footer()
+        page_options = [
+            "📊 Penjualan (GMV)",
+            "💰 COGS & Profit",
+            "🧑‍🍳 SDM & Waktu Sibuk",
+            "🛒 Pembelian",
+            "⚖️ A/B Comparison",
+            "🎯 Target",
+            "🔮 Forecast (AI)",
+            "❤️ Ulasan",
+            "💡 Rekomendasi",
+            "💸 Analisis Promo",
+            "✨ Analisis Musiman Tahunan",
+            "🧪 Lab Strategi",
+            "📉 Laporan Laba Rugi (P&L)",
+            "🛠️ Admin Panel",
+        ]
 
-    st.markdown(
-        """
-        <script>
-        function hideAllNotices() {
-            const notices = document.querySelectorAll(
-                '.stAlert[data-baseweb="alert"]:not(.fading-out)'
-            );
+        page = st.selectbox("Pilih Halaman Analisis:", page_options, key="nav_select")
+        st.divider()
 
-            notices.forEach(function(notice) {
-                if (notice.className.includes("stAlert-success") || notice.className.includes("stAlert-info") || notice.className.includes("stAlert-warning")) {
-                    notice.classList.add('fading-out');
+        # #############################################################
+        # --- 8. RENDER HALAMAN ---
+        # #############################################################
+        if page == "📊 Penjualan (GMV)":
+            build_tab1_sales(filtered_gmv)
+        elif page == "💰 COGS & Profit":
+            build_tab2_cogs(filtered_cogs)
+        elif page == "🧑‍🍳 SDM & Waktu Sibuk":
+            build_tab3_hr(filtered_waiter)
+        elif page == "🛒 Pembelian":
+            build_tab8_purchase(filtered_purchase, total_sales_revenue)
+        elif page == "⚖️ A/B Comparison":
+            build_tab4_comparison(filtered_gmv, filtered_cogs, filtered_waiter)
+        elif page == "🎯 Target":
+            build_tab6_target(filtered_gmv)
+        elif page == "🔮 Forecast (AI)":
+            build_tab5_forecast(filtered_gmv)
+        elif page == "❤️ Ulasan":
+            build_tab7_ulasan(data_ulasan)
+        elif page == "💡 Rekomendasi":
+            build_tab9_rekomendasi(filtered_gmv)
+        elif page == "💸 Analisis Promo":
+            build_tab10_promo(filtered_gmv, filtered_cogs)
+        elif page == "✨ Analisis Musiman Tahunan":
+            build_tab11_musiman(filtered_gmv, data_kalender)
+        elif page == "🧪 Lab Strategi":
+            build_tab_unique_features(data_gmv, data_cogs)
+        elif page == "📉 Laporan Laba Rugi (P&L)":
+            build_tab13_pl(data_pl)
+        elif page == "🛠️ Admin Panel":
+            build_admin_panel()
 
-                    setTimeout(() => {
-                        notice.style.transition = 'opacity 0.5s ease-out';
-                        notice.style.opacity = '0';
-                        
-                        setTimeout(() => {
-                            notice.style.display = 'none';
-                        }, 500);
-                    }, 5000); 
-                }
-            });
-        }
-        setTimeout(hideAllNotices, 1000); 
-        </script>
-        """,
-        unsafe_allow_html=True,
-    )
-    # --- Akhir dari fungsi main() ---
-
+        build_footer()
 
 # #################################################################
 # --- ENTRY POINT APLIKASI ---
