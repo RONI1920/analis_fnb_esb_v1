@@ -2514,7 +2514,7 @@ def build_tab1_sales(filtered_gmv):
                     selection_kategori = alt.selection_point(fields=["Menu Category"])
 
                     bar_height_px = 25
-                    max_height_before_scroll = 400
+                    max_height_before_scroll = 700
                     min_height_px = 150
                     num_bars_kategori = len(data_untuk_grafik_atas)
                     ideal_height = num_bars_kategori * bar_height_px
@@ -2583,11 +2583,11 @@ def build_tab1_sales(filtered_gmv):
                         )
                     )
 
-                    combined_chart = alt.vconcat(
-                        chart_kategori, chart_detail, spacing=40
-                    ).resolve_scale(y="independent")
+                    st.altair_chart(chart_kategori, use_container_width=True)
 
-                    st.altair_chart(combined_chart, use_container_width=True)
+                    st.markdown("---")
+
+                    st.altair_chart(chart_detail, use_container_width=True)
 
             elif "Menu Category" in filtered_gmv.columns:
                 st.warning("Data kategori menu tidak ditemukan untuk periode ini.")
