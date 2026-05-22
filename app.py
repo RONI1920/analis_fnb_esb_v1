@@ -2602,6 +2602,7 @@ def build_tab1_sales(filtered_gmv):
                         )
                     )
 
+
             # === 4. URUTAN BARU 3: TOP 10 MENU ===
             with st.expander("🏆 KPI Kinerja Menu (Top 10 Selling/Grossing)"):
                 st.subheader("🏆 Performa Menu Teratas (Top 10)")
