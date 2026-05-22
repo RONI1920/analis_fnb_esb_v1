@@ -1580,10 +1580,10 @@ def load_cogs_data(uploaded_file, use_db=False):
         column_mapping = {"Price": "Harga Jual", "COGS Total": "COGS"}
         df.rename(columns=column_mapping, inplace=True)
 
-        required_cols = ["Menu", "Harga Jual", "COGS", "Qty", "Total", "Sales Date"]
+        required_cols = ["Menu", "Harga Jual", "COGS", "Qty", "Total", "Sales Date", "Branch"]
         missing_cols = [col for col in required_cols if col not in df.columns]
 
-        if "Branch" in df.columns:
+        if "Branch" not in df.columns:
             st.warning(
                 "Peringatan: Kolom 'Branch' tidak ditemukan di File COGS. Filter cabang mungkin tidak berfungsi."
             )
@@ -2372,76 +2372,46 @@ def build_tab1_sales(filtered_gmv):
                 filtered_gmv, filter_regex_items_input
             )  # <-- KIRIM ARGUMEN
 
-            # === 2. TAMPILKAN KPI UTAMA ===
+            # === 2. TAMPILKAN KPI UTAMA (Expander Asli Anda) ===
             with st.expander(
-                        "📈 KPI Kinerja Penjualan (Revenue, ATV, IPB)",
-                        expanded=True,
-                    ):
+                "📈 KPI Kinerja Penjualan (Revenue, ATV, IPB)", expanded=True
+            ):
+                # ... (sisa kode KPI Anda tidak berubah) ...
+                st.header("📊 KPI Kinerja Penjualan")
+                col1, col2, col3 = st.columns(3)
+                col1.metric(
+                    "💰 Total Pendapatan Kotor",
+                    format_rupiah(kpi["Total Pendapatan Kotor"]),
+                )
+                col2.metric(
+                    "💵 Total Penjualan Bersih (Nett)",
+                    format_rupiah(kpi["Total Penjualan Bersih (Nett)"]),
+                )
+                col3.metric("🧾 Total Transaksi", f"{kpi['Total Transaksi']} Transaksi")
 
-                        st.header("📊 KPI Kinerja Penjualan")
+                col4, col5, col6 = st.columns(3)
+                col4.metric(
+                    "💸 Rata-rata Nilai Transaksi (ATV)",
+                    format_rupiah(kpi["Rata-rata Nilai Transaksi (ATV)"]),
+                )
+                col5.metric(
+                    "📦 Total Item Terjual", f"{kpi['Total Item Terjual']:,.0f} Items"
+                )
+                col6.metric(
+                    "🛍️ Item per Transaksi (IPB)",
+                    f"{kpi['Item per Transaksi (IPB)']:.2f}",
+                )
 
-                        # ==================================================
-                        # KPI UTAMA
-                        # ==================================================
-                        col1, col2, col3 = st.columns(3)
-
-                        col1.metric(
-                            "💰 Total Pendapatan Kotor",
-                            format_rupiah(kpi["Total Pendapatan Kotor"]),
-                        )
-
-                        col2.metric(
-                            "💵 Total Penjualan Bersih (Nett)",
-                            format_rupiah(kpi["Total Penjualan Bersih (Nett)"]),
-                        )
-
-                        col3.metric(
-                            "🧾 Total Transaksi",
-                            f"{kpi['Total Transaksi']} Transaksi",
-                        )
-
-                        # ==================================================
-                        # KPI BARIS KEDUA
-                        # ==================================================
-                        col4, col5, col6 = st.columns(3)
-
-                        col4.metric(
-                            "💸 Rata-rata Nilai Transaksi (ATV)",
-                            format_rupiah(kpi["Rata-rata Nilai Transaksi (ATV)"]),
-                        )
-
-                        col5.metric(
-                            "📦 Total Item Terjual",
-                            f"{kpi['Total Item Terjual']:,.0f} Items",
-                        )
-
-                        col6.metric(
-                            "🛍️ Item per Transaksi (IPB)",
-                            f"{kpi['Item per Transaksi (IPB)']:.2f}",
-                        )
-
-                        # ==================================================
-                        # RINCIAN PENDAPATAN
-                        # ==================================================
-                        st.markdown("---")
-                        st.subheader("📑 Rincian Pendapatan")
-
-                        exp_col1, exp_col2, exp_col3 = st.columns(3)
-
-                        exp_col1.metric(
-                            "📉 Total Diskon",
-                            format_rupiah(kpi["Total Diskon"]),
-                        )
-
-                        exp_col2.metric(
-                            "🛎️ Total Service Charge",
-                            format_rupiah(kpi["Total Service Charge"]),
-                        )
-
-                        exp_col3.metric(
-                            "🧾 Total Pajak",
-                            format_rupiah(kpi["Total Pajak"]),
-                        )
+                with st.expander("Lihat Rincian Pendapatan (Diskon, Service, Pajak)"):
+                    exp_col1, exp_col2, exp_col3 = st.columns(3)
+                    exp_col1.metric(
+                        "📉 Total Diskon", format_rupiah(kpi["Total Diskon"])
+                    )
+                    exp_col2.metric(
+                        "🛎️ Total Service Charge",
+                        format_rupiah(kpi["Total Service Charge"]),
+                    )
+                    exp_col3.metric("🧾 Total Pajak", format_rupiah(kpi["Total Pajak"]))
 
             st.markdown("---")
 
@@ -2514,7 +2484,7 @@ def build_tab1_sales(filtered_gmv):
                     selection_kategori = alt.selection_point(fields=["Menu Category"])
 
                     bar_height_px = 25
-                    max_height_before_scroll = 700
+                    max_height_before_scroll = 400
                     min_height_px = 150
                     num_bars_kategori = len(data_untuk_grafik_atas)
                     ideal_height = num_bars_kategori * bar_height_px
@@ -2583,11 +2553,11 @@ def build_tab1_sales(filtered_gmv):
                         )
                     )
 
-                    st.altair_chart(chart_kategori, use_container_width=True)
+                    combined_chart = alt.vconcat(
+                        chart_kategori, chart_detail, spacing=40
+                    ).resolve_scale(y="independent")
 
-                    st.markdown("---")
-
-                    st.altair_chart(chart_detail, use_container_width=True)
+                    st.altair_chart(combined_chart, use_container_width=True)
 
             elif "Menu Category" in filtered_gmv.columns:
                 st.warning("Data kategori menu tidak ditemukan untuk periode ini.")
