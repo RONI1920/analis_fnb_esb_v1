@@ -2413,8 +2413,7 @@ def build_tab1_sales(filtered_gmv):
             # ← tutup with di sini, tidak ada indentasi untuk expander berikutnya
 
             with st.expander(
-                "Lihat Rincian Pendapatan (Diskon, Service, Pajak)"
-                expanded=True
+                "Lihat Rincian Pendapatan (Diskon, Service, Pajak)", expanded=True
             ):  # ← sejajar!
                 exp_col1, exp_col2, exp_col3 = st.columns(3)
                 exp_col1.metric("📉 Total Diskon", format_rupiah(kpi["Total Diskon"]))
