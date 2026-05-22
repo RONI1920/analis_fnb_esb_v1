@@ -2385,10 +2385,7 @@ def build_tab1_sales(filtered_gmv):
             )  # <-- KIRIM ARGUMEN
 
             # === 2. TAMPILKAN KPI UTAMA (Expander Asli Anda) ===
-            with st.expander(
-                "📈 KPI Kinerja Penjualan (Revenue, ATV, IPB)", expanded=True
-            ):
-                # ... (sisa kode KPI Anda tidak berubah) ...
+            with st.expander("📈 KPI Kinerja Penjualan...", expanded=True):
                 st.header("📊 KPI Kinerja Penjualan")
                 col1, col2, col3 = st.columns(3)
                 col1.metric(
@@ -2413,18 +2410,18 @@ def build_tab1_sales(filtered_gmv):
                     "🛍️ Item per Transaksi (IPB)",
                     f"{kpi['Item per Transaksi (IPB)']:.2f}",
                 )
+            # ← tutup with di sini, tidak ada indentasi untuk expander berikutnya
 
-                # ada perubahan expander-1
-                with st.expander("Lihat Rincian Pendapatan (Diskon, Service, Pajak)"):
-                    exp_col1, exp_col2, exp_col3 = st.columns(3)
-                    exp_col1.metric(
-                        "📉 Total Diskon", format_rupiah(kpi["Total Diskon"])
-                    )
-                    exp_col2.metric(
-                        "🛎️ Total Service Charge",
-                        format_rupiah(kpi["Total Service Charge"]),
-                    )
-                    exp_col3.metric("🧾 Total Pajak", format_rupiah(kpi["Total Pajak"]))
+            with st.expander(
+                "Lihat Rincian Pendapatan (Diskon, Service, Pajak)"
+            ):  # ← sejajar!
+                exp_col1, exp_col2, exp_col3 = st.columns(3)
+                exp_col1.metric("📉 Total Diskon", format_rupiah(kpi["Total Diskon"]))
+                exp_col2.metric(
+                    "🛎️ Total Service Charge",
+                    format_rupiah(kpi["Total Service Charge"]),
+                )
+                exp_col3.metric("🧾 Total Pajak", format_rupiah(kpi["Total Pajak"]))
 
             st.markdown("---")
 
