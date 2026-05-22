@@ -21,7 +21,6 @@ import json
 from mlxtend.frequent_patterns import apriori, association_rules
 from mlxtend.preprocessing import TransactionEncoder
 
-
 # -----------------------------
 
 # --- Konfigurasi Halaman Streamlit ---
@@ -45,7 +44,6 @@ def load_css(file_name):
             pass
     except Exception as e:
         st.error(f"Gagal memuat CSS: {e}")
-
 
 
 # #################################################################
@@ -98,8 +96,7 @@ def init_db():
         cursor = conn.cursor()
 
         # 1. Skema Tabel GMV (DIPERBAIKI - Ditambah Sales Type)
-        cursor.execute(
-            """
+        cursor.execute("""
         CREATE TABLE IF NOT EXISTS gmv_data (
             "Sales Date In" DATETIME,
             "Sales Date Out" DATETIME,
@@ -130,12 +127,10 @@ def init_db():
             "Period" TEXT,
             "Branch" TEXT
         );
-        """
-        )
+        """)
 
         # 2. Skema Tabel COGS
-        cursor.execute(
-            """
+        cursor.execute("""
         CREATE TABLE IF NOT EXISTS cogs_data (
             "Sales Date" DATETIME,
             "Branch" TEXT,
@@ -146,12 +141,10 @@ def init_db():
             "Qty" REAL,
             "Total" REAL
         );
-        """
-        )
+        """)
 
         # 3. Skema Tabel Waiter
-        cursor.execute(
-            """
+        cursor.execute("""
         CREATE TABLE IF NOT EXISTS waiter_data (
             "Bill Number" TEXT,
             "Waiter" TEXT,
@@ -160,24 +153,20 @@ def init_db():
             "Branch" TEXT,
             "Sales Type" TEXT           -- <--- OPSI: Tambahkan di sini juga jika perlu untuk Tab 3
         );
-        """
-        )
+        """)
 
         # 4. Skema Tabel Ulasan
-        cursor.execute(
-            """
+        cursor.execute("""
         CREATE TABLE IF NOT EXISTS ulasan_data (
             "Nama" TEXT,
             "Rating" TEXT,
             "Ulasan" TEXT,
             "Rating_Clean" INTEGER
         );
-        """
-        )
+        """)
 
         # 5. Skema Tabel Purchase
-        cursor.execute(
-            """
+        cursor.execute("""
         CREATE TABLE IF NOT EXISTS purchase_data (
             "Purchase Date" DATETIME,
             "Required Date" DATETIME,
@@ -195,12 +184,10 @@ def init_db():
             "Total" REAL,
             "Branch" TEXT
         );
-        """
-        )
+        """)
 
         # 6. Skema Tabel Profit & Loss (BARU)
-        cursor.execute(
-            """
+        cursor.execute("""
         CREATE TABLE IF NOT EXISTS pl_data (
             "Account" TEXT,
             "Description" TEXT,
@@ -211,8 +198,7 @@ def init_db():
             "Branch" TEXT,
             "Category" TEXT -- Revenue/Expense/COGS (Derived)
         );
-        """
-        )
+        """)
 
         conn.commit()
     except Exception as e:
@@ -359,7 +345,6 @@ def save_dataframe_smart_append(df, table_name, date_col_name):
     finally:
         if conn:
             conn.close()
-
 
 
 @st.cache_data
@@ -519,6 +504,8 @@ def calculate_sales_kpi(df):
         "Total Service Charge": total_service_charge,
         "Total Pajak": total_tax,
     }
+
+
 # End Method
 
 
@@ -543,6 +530,8 @@ def get_payment_analysis(df):
         .sort_values(by="Total_Penjualan", ascending=False)
     )
     return payment_analysis.reset_index()
+
+
 # End Method
 
 
@@ -569,6 +558,8 @@ def get_visit_purpose_analysis(df):
             "Bill_Revenue": "Total After Bill Discount",
         }
     )
+
+
 # End Method
 
 
@@ -659,6 +650,8 @@ def get_menu_performance(df, filter_regex_items_str):  # <-- 1. TAMBAHKAN ARGUME
         bottom_grossing_items.reset_index(),
         menu_sales_cat_df,
     )
+
+
 # End Method
 
 
@@ -711,6 +704,7 @@ def get_operational_kpi(df):
     )
 
     return avg_dining_time, peak_hours.reset_index(), peak_days_of_week
+
 
 # End Method
 
@@ -826,6 +820,8 @@ def analyze_profit(df_cogs):
     final_df.fillna(0, inplace=True)
 
     return final_df[final_cols].sort_values(by="Total Profit (Rp)", ascending=False)
+
+
 # End Method
 
 
@@ -881,8 +877,9 @@ def get_peak_time_analysis(df):
         st.warning(f"Gagal mengurutkan waktu: {e}")
 
     return time_analysis
-# End Method
 
+
+# End Method
 
 
 # Waiters Performance
@@ -911,9 +908,11 @@ def get_waiter_performance(df):
     )
     return waiter_perf.nlargest(10, "Total_Penjualan")
 
+
 # #################################################################
 # --- BAGIAN GRAFIK YANG DIMODIFIKASI (MENGGUNAKAN PLOTLY) ---
 # #################################################################
+
 
 def create_horizontal_bar_chart(data, x_col, y_col, x_title, y_title, sort_order="-x"):
     """
@@ -1066,12 +1065,14 @@ def calculate_delta(value_A, value_B, formatter_func, higher_is_better=True):
     # Kembalikan 3 nilai: Nilai absolut, String Persen, dan Warna
     return delta_abs_formatted, delta_pct_str, delta_color
 
+
 # End Method
 
 
 # #################################################################
 # --- FUNGSI BARU UNTUK INSIGHT DI TAB 1 ---
 # #################################################################
+
 
 # GMV insights
 @st.cache_data
@@ -1326,6 +1327,7 @@ def load_data_gmv(uploaded_file, use_db=False):
     # --- PRIORITAS 3: Cekbox TIDAK Dicentang, Uploader KOSONG ---
     return None, None, None, None
 
+
 # End Method
 
 
@@ -1503,6 +1505,8 @@ def load_pl_data(uploaded_file, use_db=False):
             st.error(f"Gagal memproses file P&L: {e}")
             return None
     return None
+
+
 # End Method
 
 # #################################################################
@@ -1580,7 +1584,15 @@ def load_cogs_data(uploaded_file, use_db=False):
         column_mapping = {"Price": "Harga Jual", "COGS Total": "COGS"}
         df.rename(columns=column_mapping, inplace=True)
 
-        required_cols = ["Menu", "Harga Jual", "COGS", "Qty", "Total", "Sales Date", "Branch"]
+        required_cols = [
+            "Menu",
+            "Harga Jual",
+            "COGS",
+            "Qty",
+            "Total",
+            "Sales Date",
+            "Branch",
+        ]
         missing_cols = [col for col in required_cols if col not in df.columns]
 
         if "Branch" not in df.columns:
@@ -1921,8 +1933,8 @@ def build_sidebar():
         st.session_state.waiter_saved_status = False
         st.session_state.ulasan_saved_status = False
         st.session_state.purchase_saved_status = False
-        st.session_state.pl_saved_status = False       # ← TAMBAH INI
-        st.session_state.use_db_widget_key = False     # ← TAMBAH INI
+        st.session_state.pl_saved_status = False  # ← TAMBAH INI
+        st.session_state.use_db_widget_key = False  # ← TAMBAH INI
 
     # #################################################################
     # --- BATAS FUNGSI BARU ---
@@ -2402,6 +2414,7 @@ def build_tab1_sales(filtered_gmv):
                     f"{kpi['Item per Transaksi (IPB)']:.2f}",
                 )
 
+                # ada perubahan expander-1
                 with st.expander("Lihat Rincian Pendapatan (Diskon, Service, Pajak)"):
                     exp_col1, exp_col2, exp_col3 = st.columns(3)
                     exp_col1.metric(
@@ -2630,7 +2643,8 @@ def build_tab1_sales(filtered_gmv):
             st.header("⚙️ Analisis Operasional & Pelanggan")
 
             with st.expander(
-                "⚙️ KPI Operasional (Jam Sibuk, Hari Sibuk, Durasi Makan)", expanded=True
+                "⚙️ KPI Operasional (Jam Sibuk, Hari Sibuk, Durasi Makan)",
+                expanded=True,
             ):
                 avg_time, peak_hours, peak_days_of_week = get_operational_kpi(
                     filtered_gmv
@@ -2821,6 +2835,7 @@ def generate_cogs_insights(profit_df):
 
     return insights
 
+
 def build_tab2_cogs(filtered_cogs):
     """
     Menggambar semua elemen untuk Tab 2.
@@ -2848,33 +2863,17 @@ def build_tab2_cogs(filtered_cogs):
                 expanded=True,
             ):
 
-                total_revenue = (
-                    profit_df["Total Revenue (Rp)"]
-                    .sum()
-                )
+                total_revenue = profit_df["Total Revenue (Rp)"].sum()
 
-                total_cogs_cost = (
-                    profit_df["Total COGS (Rp)"]
-                    .sum()
-                )
+                total_cogs_cost = profit_df["Total COGS (Rp)"].sum()
 
-                total_profit = (
-                    profit_df["Total Profit (Rp)"]
-                    .sum()
-                )
+                total_profit = profit_df["Total Profit (Rp)"].sum()
 
                 avg_margin_percent = (
-                    (
-                        total_profit
-                        / total_revenue
-                    ) * 100
-                    if total_revenue > 0
-                    else 0
+                    (total_profit / total_revenue) * 100 if total_revenue > 0 else 0
                 )
 
-                st.subheader(
-                    "Ringkasan Profitabilitas"
-                )
+                st.subheader("Ringkasan Profitabilitas")
 
                 # =====================================================
                 # BARIS PERTAMA
@@ -2885,16 +2884,12 @@ def build_tab2_cogs(filtered_cogs):
                 with p_col1:
 
                     st.metric(
-                        "📈 Total Revenue (dari COGS)",
-                        format_rupiah(total_revenue)
+                        "📈 Total Revenue (dari COGS)", format_rupiah(total_revenue)
                     )
 
                 with p_col2:
 
-                    st.metric(
-                        "📉 Total COGS",
-                        format_rupiah(total_cogs_cost)
-                    )
+                    st.metric("📉 Total COGS", format_rupiah(total_cogs_cost))
 
                 # =====================================================
                 # BARIS KEDUA
@@ -2904,16 +2899,12 @@ def build_tab2_cogs(filtered_cogs):
 
                 with p_col3:
 
-                    st.metric(
-                        "💸 Total Profit",
-                        format_rupiah(total_profit)
-                    )
+                    st.metric("💸 Total Profit", format_rupiah(total_profit))
 
                 with p_col4:
 
                     st.metric(
-                        "📊 Rata-rata Margin Profit",
-                        format_persen(avg_margin_percent)
+                        "📊 Rata-rata Margin Profit", format_persen(avg_margin_percent)
                     )
 
             st.markdown("---")
@@ -2922,13 +2913,9 @@ def build_tab2_cogs(filtered_cogs):
             # TABEL RINCIAN
             # =========================================================
 
-            with st.expander(
-                "📝 Rincian Profitabilitas per Menu (Tabel)"
-            ):
+            with st.expander("📝 Rincian Profitabilitas per Menu (Tabel)"):
 
-                st.subheader(
-                    "Rincian Profitabilitas per Menu"
-                )
+                st.subheader("Rincian Profitabilitas per Menu")
 
                 st.info(
                     "Data ini dijumlahkan (agregasi) "
@@ -2949,20 +2936,13 @@ def build_tab2_cogs(filtered_cogs):
 
                 for col in format_cols_rupiah:
 
-                    formatted_df[col] = (
-                        formatted_df[col]
-                        .apply(format_rupiah)
-                    )
+                    formatted_df[col] = formatted_df[col].apply(format_rupiah)
 
-                formatted_df["Margin (%)"] = (
-                    formatted_df["Margin (%)"]
-                    .apply(format_persen)
+                formatted_df["Margin (%)"] = formatted_df["Margin (%)"].apply(
+                    format_persen
                 )
 
-                st.dataframe(
-                    formatted_df.set_index("Menu"),
-                    use_container_width=True
-                )
+                st.dataframe(formatted_df.set_index("Menu"), use_container_width=True)
 
             st.markdown("---")
 
@@ -2975,46 +2955,24 @@ def build_tab2_cogs(filtered_cogs):
                 expanded=True,
             ):
 
-                st.subheader(
-                    "Analisis Performa Profit Menu"
-                )
+                st.subheader("Analisis Performa Profit Menu")
 
                 # =====================================================
                 # TOP & BOTTOM DATA
                 # =====================================================
 
-                top_10_profit = (
-                    profit_df.nlargest(
-                        10,
-                        "Total Profit (Rp)"
-                    )
+                top_10_profit = profit_df.nlargest(10, "Total Profit (Rp)")
+
+                bottom_10_profit = profit_df[profit_df["Qty"] > 0].nsmallest(
+                    10, "Total Profit (Rp)"
                 )
 
-                bottom_10_profit = (
-                    profit_df[
-                        profit_df["Qty"] > 0
-                    ].nsmallest(
-                        10,
-                        "Total Profit (Rp)"
-                    )
+                top_10_margin_pct = profit_df[profit_df["Qty"] > 0].nlargest(
+                    10, "Margin (%)"
                 )
 
-                top_10_margin_pct = (
-                    profit_df[
-                        profit_df["Qty"] > 0
-                    ].nlargest(
-                        10,
-                        "Margin (%)"
-                    )
-                )
-
-                bottom_10_margin_pct = (
-                    profit_df[
-                        profit_df["Qty"] > 0
-                    ].nsmallest(
-                        10,
-                        "Margin (%)"
-                    )
+                bottom_10_margin_pct = profit_df[profit_df["Qty"] > 0].nsmallest(
+                    10, "Margin (%)"
                 )
 
                 # =====================================================
@@ -3025,9 +2983,7 @@ def build_tab2_cogs(filtered_cogs):
 
                 with p_col5:
 
-                    st.markdown(
-                        "##### 🏆 Menu Paling Untung (by Total Profit Rp)"
-                    )
+                    st.markdown("##### 🏆 Menu Paling Untung (by Total Profit Rp)")
 
                     chart = create_horizontal_bar_chart(
                         top_10_profit,
@@ -3037,16 +2993,11 @@ def build_tab2_cogs(filtered_cogs):
                         "Menu Paling Untung (by Total Profit Rp)",
                     )
 
-                    st.plotly_chart(
-                        chart,
-                        use_container_width=True
-                    )
+                    st.plotly_chart(chart, use_container_width=True)
 
                 with p_col6:
 
-                    st.markdown(
-                        "##### 📈 Menu Margin Tertinggi (by %)"
-                    )
+                    st.markdown("##### 📈 Menu Margin Tertinggi (by %)")
 
                     chart = create_horizontal_bar_chart(
                         top_10_margin_pct,
@@ -3056,10 +3007,7 @@ def build_tab2_cogs(filtered_cogs):
                         "Menu Margin Tertinggi (by %)",
                     )
 
-                    st.plotly_chart(
-                        chart,
-                        use_container_width=True
-                    )
+                    st.plotly_chart(chart, use_container_width=True)
 
                 # =====================================================
                 # BARIS 2 CHART
@@ -3069,9 +3017,7 @@ def build_tab2_cogs(filtered_cogs):
 
                 with p_col7:
 
-                    st.markdown(
-                        "##### 📉 Menu Paling Tidak Untung"
-                    )
+                    st.markdown("##### 📉 Menu Paling Tidak Untung")
 
                     chart = create_horizontal_bar_chart(
                         bottom_10_profit,
@@ -3082,16 +3028,11 @@ def build_tab2_cogs(filtered_cogs):
                         sort_order="x",
                     )
 
-                    st.plotly_chart(
-                        chart,
-                        use_container_width=True
-                    )
+                    st.plotly_chart(chart, use_container_width=True)
 
                 with p_col8:
 
-                    st.markdown(
-                        "##### 📉 Menu Margin Terendah"
-                    )
+                    st.markdown("##### 📉 Menu Margin Terendah")
 
                     chart = create_horizontal_bar_chart(
                         bottom_10_margin_pct,
@@ -3102,10 +3043,7 @@ def build_tab2_cogs(filtered_cogs):
                         sort_order="x",
                     )
 
-                    st.plotly_chart(
-                        chart,
-                        use_container_width=True
-                    )
+                    st.plotly_chart(chart, use_container_width=True)
 
             # =========================================================
             # INSIGHT OTOMATIS
@@ -3113,13 +3051,9 @@ def build_tab2_cogs(filtered_cogs):
 
             st.markdown("---")
 
-            st.header(
-                "💡 Insight Otomatis (COGS & Profit)"
-            )
+            st.header("💡 Insight Otomatis (COGS & Profit)")
 
-            insights = generate_cogs_insights(
-                profit_df
-            )
+            insights = generate_cogs_insights(profit_df)
 
             with st.expander(
                 "Klik untuk melihat Temuan Kunci dari Data Profit Anda",
@@ -3130,15 +3064,12 @@ def build_tab2_cogs(filtered_cogs):
 
                     for insight in insights:
 
-                        st.markdown(
-                            f"&bull; {insight}"
-                        )
+                        st.markdown(f"&bull; {insight}")
 
                 else:
 
                     st.info(
-                        "Tidak ada insight otomatis "
-                        "yang dapat dibuat dari data ini."
+                        "Tidak ada insight otomatis " "yang dapat dibuat dari data ini."
                     )
 
         # =============================================================
@@ -3148,8 +3079,7 @@ def build_tab2_cogs(filtered_cogs):
         elif filtered_cogs.empty:
 
             st.warning(
-                "Tidak ada data ditemukan di "
-                "File COGS untuk filter yang dipilih."
+                "Tidak ada data ditemukan di " "File COGS untuk filter yang dipilih."
             )
 
     # =============================================================
@@ -3158,11 +3088,8 @@ def build_tab2_cogs(filtered_cogs):
 
     else:
 
-        st.info(
-            "Silakan upload file "
-            "Laporan COGS (File 2) "
-            "di sidebar."
-        )
+        st.info("Silakan upload file " "Laporan COGS (File 2) " "di sidebar.")
+
 
 # #################################################################
 # --- FUNGSI BARU UNTUK INSIGHT DI TAB 3 (SDM & WAKTU) ---
@@ -4153,7 +4080,6 @@ def build_tab3_hr(filtered_waiter):
 
 # Tab 4
 def build_tab4_comparison(data_gmv, data_cogs, data_waiter):
-
     """
     TAB 4 — Executive Comparison Dashboard
     Clean Version (Revenue Focus)
@@ -4171,19 +4097,12 @@ def build_tab4_comparison(data_gmv, data_cogs, data_waiter):
     for df, col in [
         (data_gmv, "Sales Date In"),
         (data_cogs, "Sales Date"),
-        (data_waiter, "Order Time")
+        (data_waiter, "Order Time"),
     ]:
 
-        if (
-            df is not None
-            and not df.empty
-            and col in df.columns
-        ):
+        if df is not None and not df.empty and col in df.columns:
 
-            df[col] = pd.to_datetime(
-                df[col],
-                errors="coerce"
-            )
+            df[col] = pd.to_datetime(df[col], errors="coerce")
 
     # =========================================================
     # HELPER
@@ -4242,18 +4161,9 @@ def build_tab4_comparison(data_gmv, data_cogs, data_waiter):
     # SLICE DATA
     # =========================================================
 
-    def slice_data_by_period(
-        df,
-        date_col,
-        ref_date,
-        ctype
-    ):
+    def slice_data_by_period(df, date_col, ref_date, ctype):
 
-        if (
-            df is None
-            or df.empty
-            or date_col not in df.columns
-        ):
+        if df is None or df.empty or date_col not in df.columns:
             return pd.DataFrame(), "-"
 
         sliced = pd.DataFrame(columns=df.columns)
@@ -4262,45 +4172,34 @@ def build_tab4_comparison(data_gmv, data_cogs, data_waiter):
 
         if ctype == "Harian":
 
-            cap = ref_date.strftime('%d %b %Y')
+            cap = ref_date.strftime("%d %b %Y")
 
-            sliced = df[
-                df[date_col].dt.date == ref_date
-            ]
+            sliced = df[df[date_col].dt.date == ref_date]
 
         elif ctype == "Mingguan":
 
             end = ref_date + pd.to_timedelta(6, unit="d")
 
-            cap = (
-                f"{ref_date.strftime('%d %b')} "
-                f"– "
-                f"{end.strftime('%d %b %Y')}"
-            )
+            cap = f"{ref_date.strftime('%d %b')} " f"– " f"{end.strftime('%d %b %Y')}"
 
             sliced = df[
-                (df[date_col].dt.date >= ref_date)
-                &
-                (df[date_col].dt.date <= end)
+                (df[date_col].dt.date >= ref_date) & (df[date_col].dt.date <= end)
             ]
 
         elif ctype == "Bulanan":
 
-            cap = ref_date.strftime('%B %Y')
+            cap = ref_date.strftime("%B %Y")
 
             sliced = df[
                 (df[date_col].dt.month == ref_date.month)
-                &
-                (df[date_col].dt.year == ref_date.year)
+                & (df[date_col].dt.year == ref_date.year)
             ]
 
         elif ctype == "Tahunan":
 
             cap = f"Tahun {ref_date.year}"
 
-            sliced = df[
-                df[date_col].dt.year == ref_date.year
-            ]
+            sliced = df[df[date_col].dt.year == ref_date.year]
 
         return sliced, cap
 
@@ -4317,14 +4216,10 @@ def build_tab4_comparison(data_gmv, data_cogs, data_waiter):
         for df, col in [
             (data_gmv, "Sales Date In"),
             (data_cogs, "Sales Date"),
-            (data_waiter, "Order Time")
+            (data_waiter, "Order Time"),
         ]:
 
-            if (
-                df is not None
-                and not df.empty
-                and col in df.columns
-            ):
+            if df is not None and not df.empty and col in df.columns:
 
                 master_min = df[col].min().date()
                 master_max = df[col].max().date()
@@ -4347,13 +4242,7 @@ def build_tab4_comparison(data_gmv, data_cogs, data_waiter):
     # =========================================================
 
     ctype = st.selectbox(
-        "Tipe Perbandingan",
-        [
-            "Harian",
-            "Mingguan",
-            "Bulanan",
-            "Tahunan"
-        ]
+        "Tipe Perbandingan", ["Harian", "Mingguan", "Bulanan", "Tahunan"]
     )
 
     st.markdown("---")
@@ -4366,7 +4255,7 @@ def build_tab4_comparison(data_gmv, data_cogs, data_waiter):
             "Harian": pd.to_timedelta(1, "d"),
             "Mingguan": pd.to_timedelta(7, "d"),
             "Bulanan": pd.DateOffset(months=1),
-            "Tahunan": pd.DateOffset(years=1)
+            "Tahunan": pd.DateOffset(years=1),
         }
 
         dB = dA - offset[ctype]
@@ -4387,21 +4276,13 @@ def build_tab4_comparison(data_gmv, data_cogs, data_waiter):
 
         st.markdown("### 📌 Periode A")
 
-        date_A = st.date_input(
-            "A",
-            value=dA,
-            key="cmp_A"
-        )
+        date_A = st.date_input("A", value=dA, key="cmp_A")
 
     with c3:
 
         st.markdown("### 📊 Periode B")
 
-        date_B = st.date_input(
-            "B",
-            value=dB,
-            key="cmp_B"
-        )
+        date_B = st.date_input("B", value=dB, key="cmp_B")
 
     with c2:
 
@@ -4425,19 +4306,9 @@ def build_tab4_comparison(data_gmv, data_cogs, data_waiter):
     # SLICE
     # =========================================================
 
-    gmvA, capA = slice_data_by_period(
-        data_gmv,
-        "Sales Date In",
-        date_A,
-        ctype
-    )
+    gmvA, capA = slice_data_by_period(data_gmv, "Sales Date In", date_A, ctype)
 
-    gmvB, capB = slice_data_by_period(
-        data_gmv,
-        "Sales Date In",
-        date_B,
-        ctype
-    )
+    gmvB, capB = slice_data_by_period(data_gmv, "Sales Date In", date_B, ctype)
 
     # =========================================================
     # KPI
@@ -4463,55 +4334,25 @@ def build_tab4_comparison(data_gmv, data_cogs, data_waiter):
     # KPI VALUE
     # =========================================================
 
-    rev_A = safe_get(
-        kA,
-        "Total Pendapatan Kotor"
-    )
+    rev_A = safe_get(kA, "Total Pendapatan Kotor")
 
-    rev_B = safe_get(
-        kB,
-        "Total Pendapatan Kotor"
-    )
+    rev_B = safe_get(kB, "Total Pendapatan Kotor")
 
-    trx_A = safe_get(
-        kA,
-        "Total Transaksi"
-    )
+    trx_A = safe_get(kA, "Total Transaksi")
 
-    trx_B = safe_get(
-        kB,
-        "Total Transaksi"
-    )
+    trx_B = safe_get(kB, "Total Transaksi")
 
-    atv_A = safe_get(
-        kA,
-        "Rata-rata Nilai Transaksi (ATV)"
-    )
+    atv_A = safe_get(kA, "Rata-rata Nilai Transaksi (ATV)")
 
-    atv_B = safe_get(
-        kB,
-        "Rata-rata Nilai Transaksi (ATV)"
-    )
+    atv_B = safe_get(kB, "Rata-rata Nilai Transaksi (ATV)")
 
-    ipb_A = safe_get(
-        kA,
-        "Item per Transaksi (IPB)"
-    )
+    ipb_A = safe_get(kA, "Item per Transaksi (IPB)")
 
-    ipb_B = safe_get(
-        kB,
-        "Item per Transaksi (IPB)"
-    )
+    ipb_B = safe_get(kB, "Item per Transaksi (IPB)")
 
-    disc_A = safe_get(
-        kA,
-        "Total Diskon"
-    )
+    disc_A = safe_get(kA, "Total Diskon")
 
-    disc_B = safe_get(
-        kB,
-        "Total Diskon"
-    )
+    disc_B = safe_get(kB, "Total Diskon")
 
     # =========================================================
     # DELTA
@@ -4559,21 +4400,17 @@ def build_tab4_comparison(data_gmv, data_cogs, data_waiter):
 
         if impact < 0:
 
-            st.error(
-                f"""
+            st.error(f"""
                 💸 Estimasi kehilangan revenue:
                 {format_rupiah(abs(impact))}
-                """
-            )
+                """)
 
         else:
 
-            st.success(
-                f"""
+            st.success(f"""
                 💰 Tambahan revenue:
                 {format_rupiah(impact)}
-                """
-            )
+                """)
 
     # =========================================================
     # REVENUE DRIVER
@@ -4587,49 +4424,28 @@ def build_tab4_comparison(data_gmv, data_cogs, data_waiter):
             "Transaction": abs(d_trx),
             "ATV": abs(d_atv),
             "IPB": abs(d_ipb),
-            "Discount": abs(d_disc)
+            "Discount": abs(d_disc),
         }
 
-        top_driver = max(
-            factors,
-            key=factors.get
-        )
+        top_driver = max(factors, key=factors.get)
 
-        st.warning(
-            f"""
+        st.warning(f"""
             🚨 Faktor terbesar perubahan revenue:
 
             {top_driver}
 
             ({factors[top_driver]:.1f}%)
-            """
-        )
+            """)
 
         col1, col2, col3, col4 = st.columns(4)
 
-        col1.metric(
-            "Revenue",
-            format_rupiah(rev_A),
-            f"{d_rev:+.1f}%"
-        )
+        col1.metric("Revenue", format_rupiah(rev_A), f"{d_rev:+.1f}%")
 
-        col2.metric(
-            "Transaction",
-            format_angka_bulat(trx_A),
-            f"{d_trx:+.1f}%"
-        )
+        col2.metric("Transaction", format_angka_bulat(trx_A), f"{d_trx:+.1f}%")
 
-        col3.metric(
-            "ATV",
-            format_rupiah(atv_A),
-            f"{d_atv:+.1f}%"
-        )
+        col3.metric("ATV", format_rupiah(atv_A), f"{d_atv:+.1f}%")
 
-        col4.metric(
-            "IPB",
-            f"{ipb_A:.2f}",
-            f"{d_ipb:+.1f}%"
-        )
+        col4.metric("IPB", f"{ipb_A:.2f}", f"{d_ipb:+.1f}%")
 
     # =========================================================
     # ROOT CAUSE
@@ -4641,8 +4457,7 @@ def build_tab4_comparison(data_gmv, data_cogs, data_waiter):
 
         if d_trx < -5:
 
-            st.error(
-                f"""
+            st.error(f"""
                 🔴 Traffic customer turun
                 {abs(d_trx):.1f}%
 
@@ -4650,13 +4465,11 @@ def build_tab4_comparison(data_gmv, data_cogs, data_waiter):
                 - Promo kurang efektif
                 - Traffic area turun
                 - Kompetitor lebih agresif
-                """
-            )
+                """)
 
         if d_atv < -5 and d_ipb < -5:
 
-            st.warning(
-                f"""
+            st.warning(f"""
                 ⚠️ Customer membeli lebih sedikit item.
 
                 ATV turun {abs(d_atv):.1f}%
@@ -4665,30 +4478,25 @@ def build_tab4_comparison(data_gmv, data_cogs, data_waiter):
                 Kemungkinan:
                 - Upselling melemah
                 - Bundling kurang menarik
-                """
-            )
+                """)
 
         if d_disc > 15:
 
-            st.warning(
-                f"""
+            st.warning(f"""
                 🏷️ Diskon meningkat
                 {d_disc:.1f}%
 
                 Margin bisa tertekan.
-                """
-            )
+                """)
 
         if d_atv > 10:
 
-            st.success(
-                """
+            st.success("""
                 ✅ ATV meningkat signifikan.
 
                 Customer spending lebih tinggi.
                 Upselling berjalan baik.
-                """
-            )
+                """)
 
     # =========================================================
     # PRIORITY
@@ -4700,22 +4508,16 @@ def build_tab4_comparison(data_gmv, data_cogs, data_waiter):
         ("Revenue", abs(d_rev)),
         ("Transaction", abs(d_trx)),
         ("ATV", abs(d_atv)),
-        ("Discount", abs(d_disc))
+        ("Discount", abs(d_disc)),
     ]
 
-    insights = sorted(
-        insights,
-        key=lambda x: x[1],
-        reverse=True
-    )
+    insights = sorted(insights, key=lambda x: x[1], reverse=True)
 
     with st.container(border=True):
 
         for idx, (name, val) in enumerate(insights, 1):
 
-            st.markdown(
-                f"{idx}. **{name}** ({val:.1f}%)"
-            )
+            st.markdown(f"{idx}. **{name}** ({val:.1f}%)")
 
     # =========================================================
     # RECOMMENDATION
@@ -4727,27 +4529,19 @@ def build_tab4_comparison(data_gmv, data_cogs, data_waiter):
 
     if d_trx < -10:
 
-        recommendations.append(
-            "Evaluasi traffic customer dan efektivitas promosi."
-        )
+        recommendations.append("Evaluasi traffic customer dan efektivitas promosi.")
 
     if d_atv < -10:
 
-        recommendations.append(
-            "Tingkatkan upselling dan bundling menu."
-        )
+        recommendations.append("Tingkatkan upselling dan bundling menu.")
 
     if d_disc > 15:
 
-        recommendations.append(
-            "Audit efektivitas program diskon."
-        )
+        recommendations.append("Audit efektivitas program diskon.")
 
     if d_ipb < -10:
 
-        recommendations.append(
-            "Evaluasi strategi add-on dan cross-selling."
-        )
+        recommendations.append("Evaluasi strategi add-on dan cross-selling.")
 
     if not recommendations:
 
@@ -4773,9 +4567,7 @@ def build_tab4_comparison(data_gmv, data_cogs, data_waiter):
 
         if d_rev > 0:
 
-            summary.append(
-                f"Revenue naik {d_rev:.1f}% dibanding periode sebelumnya."
-            )
+            summary.append(f"Revenue naik {d_rev:.1f}% dibanding periode sebelumnya.")
 
         else:
 
@@ -4785,21 +4577,15 @@ def build_tab4_comparison(data_gmv, data_cogs, data_waiter):
 
         if abs(d_trx) > abs(d_atv):
 
-            summary.append(
-                "Perubahan utama dipengaruhi volume transaksi."
-            )
+            summary.append("Perubahan utama dipengaruhi volume transaksi.")
 
         else:
 
-            summary.append(
-                "Perubahan utama dipengaruhi nilai transaksi pelanggan."
-            )
+            summary.append("Perubahan utama dipengaruhi nilai transaksi pelanggan.")
 
         if d_disc > 10:
 
-            summary.append(
-                "Diskon meningkat signifikan dan perlu dikontrol."
-            )
+            summary.append("Diskon meningkat signifikan dan perlu dikontrol.")
 
         if d_ipb < -10:
 
@@ -4809,16 +4595,15 @@ def build_tab4_comparison(data_gmv, data_cogs, data_waiter):
 
         elif d_ipb > 10:
 
-            summary.append(
-                "Cross-selling dan add-on berjalan efektif."
-            )
+            summary.append("Cross-selling dan add-on berjalan efektif.")
 
         for s in summary:
 
             st.markdown(f"• {s}")
 
-            
+
 # TAB 5
+
 
 def build_tab5_forecast(data_gmv):
     """Menggambar Tab 5 (Peramalan Detail) menggunakan Prophet.
@@ -4974,6 +4759,7 @@ def build_tab5_forecast(data_gmv):
     except Exception as e:
         st.error(f"Terjadi kesalahan saat melatih model Prophet: {e}")
         st.exception(e)
+
 
 # TAB 6
 def build_tab6_target(data_gmv):
@@ -5299,6 +5085,7 @@ def build_tab6_target(data_gmv):
     # --- BATAS BLOK INSIGHT BARU ---
     # #############################################################
 
+
 # TAB 7
 def build_tab7_ulasan(data_ulasan):
     """Menggambar Tab 7 (Analisis Ulasan Pelanggan)."""
@@ -5472,6 +5259,7 @@ def build_tab7_ulasan(data_ulasan):
                 st.markdown(f"&bull; {insight}")
         else:
             st.info("Tidak ada insight otomatis yang dapat dibuat dari data ini.")
+
 
 # TAB 8
 def build_tab8_purchase(filtered_purchase, total_sales_revenue):
@@ -6282,6 +6070,7 @@ def build_tab10_promo(filtered_gmv, filtered_cogs):
 # SUPER FAST + NO RECURSION + LIGHTWEIGHT PLOTLY
 # #################################################################
 
+
 def format_rupiah(angka):
 
     if pd.isna(angka):
@@ -6294,18 +6083,11 @@ def format_rupiah(angka):
 # ANALYSIS ENGINE (FAST VERSION)
 # #################################################################
 
-@st.cache_data(show_spinner=False)
-def analyze_tab11_weekend_effect(
-    df_gmv,
-    df_kalender
-):
 
-    if (
-        df_gmv is None
-        or df_gmv.empty
-        or df_kalender is None
-        or df_kalender.empty
-    ):
+@st.cache_data(show_spinner=False)
+def analyze_tab11_weekend_effect(df_gmv, df_kalender):
+
+    if df_gmv is None or df_gmv.empty or df_kalender is None or df_kalender.empty:
         return None, None
 
     try:
@@ -6324,10 +6106,7 @@ def analyze_tab11_weekend_effect(
         # VALIDASI
         # =====================================================
 
-        required_cols = [
-            col_tgl,
-            col_revenue
-        ]
+        required_cols = [col_tgl, col_revenue]
 
         for col in required_cols:
 
@@ -6338,9 +6117,7 @@ def analyze_tab11_weekend_effect(
 
         if "Tanggal" not in df_kal.columns:
 
-            st.error(
-                "Kolom 'Tanggal' tidak ditemukan di kalender"
-            )
+            st.error("Kolom 'Tanggal' tidak ditemukan di kalender")
 
             return None, None
 
@@ -6348,19 +6125,13 @@ def analyze_tab11_weekend_effect(
         # CLEANING
         # =====================================================
 
-        df_sales[col_tgl] = pd.to_datetime(
-            df_sales[col_tgl],
-            errors="coerce"
-        )
+        df_sales[col_tgl] = pd.to_datetime(df_sales[col_tgl], errors="coerce")
 
         df_sales[col_revenue] = pd.to_numeric(
-            df_sales[col_revenue],
-            errors="coerce"
+            df_sales[col_revenue], errors="coerce"
         ).fillna(0)
 
-        df_sales = df_sales.dropna(
-            subset=[col_tgl]
-        )
+        df_sales = df_sales.dropna(subset=[col_tgl])
 
         if df_sales.empty:
 
@@ -6370,54 +6141,32 @@ def analyze_tab11_weekend_effect(
         # DAILY SALES
         # =====================================================
 
-        df_sales["Tanggal"] = (
-            df_sales[col_tgl]
-            .dt.floor("D")
-        )
+        df_sales["Tanggal"] = df_sales[col_tgl].dt.floor("D")
 
-        df_daily = (
-            df_sales.groupby("Tanggal", as_index=False)
-            [col_revenue]
-            .sum()
-        )
+        df_daily = df_sales.groupby("Tanggal", as_index=False)[col_revenue].sum()
 
         # =====================================================
         # CLEANING KALENDER
         # =====================================================
 
-        df_kal["Tanggal"] = pd.to_datetime(
-            df_kal["Tanggal"],
-            errors="coerce"
-        )
+        df_kal["Tanggal"] = pd.to_datetime(df_kal["Tanggal"], errors="coerce")
 
         if "Tipe_Event" not in df_kal.columns:
             df_kal["Tipe_Event"] = "Biasa"
 
-        df_kal["Tipe_Event"] = (
-            df_kal["Tipe_Event"]
-            .fillna("Biasa")
-            .astype(str)
-        )
+        df_kal["Tipe_Event"] = df_kal["Tipe_Event"].fillna("Biasa").astype(str)
 
         # =====================================================
         # MERGE
         # =====================================================
 
-        df_merged = pd.merge(
-            df_daily,
-            df_kal,
-            on="Tanggal",
-            how="left"
-        )
+        df_merged = pd.merge(df_daily, df_kal, on="Tanggal", how="left")
 
         # =====================================================
         # WEEKEND FLAG
         # =====================================================
 
-        df_merged["Is_Weekend"] = (
-            df_merged["Tanggal"]
-            .dt.dayofweek >= 5
-        )
+        df_merged["Is_Weekend"] = df_merged["Tanggal"].dt.dayofweek >= 5
 
         # =====================================================
         # HOLIDAY FLAG
@@ -6443,68 +6192,34 @@ def analyze_tab11_weekend_effect(
             "Muharram"
         )
 
-        df_merged["Is_Holiday"] = (
-            df_merged["Tipe_Event"]
-            .str.contains(
-                holiday_keywords,
-                case=False,
-                regex=True,
-                na=False
-            )
+        df_merged["Is_Holiday"] = df_merged["Tipe_Event"].str.contains(
+            holiday_keywords, case=False, regex=True, na=False
         )
 
         # =====================================================
         # FAST CATEGORY (NO APPLY AXIS=1)
         # =====================================================
 
-        df_merged["Kategori_Hari"] = (
-            "1. Weekday Biasa"
-        )
+        df_merged["Kategori_Hari"] = "1. Weekday Biasa"
+
+        df_merged.loc[df_merged["Is_Weekend"], "Kategori_Hari"] = "2. Weekend Biasa"
 
         df_merged.loc[
-            df_merged["Is_Weekend"],
-            "Kategori_Hari"
-        ] = "2. Weekend Biasa"
-
-        df_merged.loc[
-            (
-                df_merged["Is_Holiday"]
-                & ~df_merged["Is_Weekend"]
-            ),
-            "Kategori_Hari"
+            (df_merged["Is_Holiday"] & ~df_merged["Is_Weekend"]), "Kategori_Hari"
         ] = "3. Weekday Libur"
 
         df_merged.loc[
-            (
-                df_merged["Is_Holiday"]
-                & df_merged["Is_Weekend"]
-            ),
-            "Kategori_Hari"
+            (df_merged["Is_Holiday"] & df_merged["Is_Weekend"]), "Kategori_Hari"
         ] = "4. Weekend & Libur"
 
         # =====================================================
         # SUMMARY
         # =====================================================
 
-        df_summary = (
-            df_merged.groupby(
-                "Kategori_Hari",
-                as_index=False
-            )
-            .agg(
-                Rata_Rata_Omzet=(
-                    col_revenue,
-                    "mean"
-                ),
-                Jumlah_Hari=(
-                    "Tanggal",
-                    "count"
-                ),
-                Total_Omzet=(
-                    col_revenue,
-                    "sum"
-                ),
-            )
+        df_summary = df_merged.groupby("Kategori_Hari", as_index=False).agg(
+            Rata_Rata_Omzet=(col_revenue, "mean"),
+            Jumlah_Hari=("Tanggal", "count"),
+            Total_Omzet=(col_revenue, "sum"),
         )
 
         # =====================================================
@@ -6519,22 +6234,16 @@ def analyze_tab11_weekend_effect(
         ]
 
         df_summary["Kategori_Hari"] = pd.Categorical(
-            df_summary["Kategori_Hari"],
-            categories=category_order,
-            ordered=True
+            df_summary["Kategori_Hari"], categories=category_order, ordered=True
         )
 
-        df_summary = df_summary.sort_values(
-            "Kategori_Hari"
-        )
+        df_summary = df_summary.sort_values("Kategori_Hari")
 
         return df_summary, df_merged
 
     except Exception as e:
 
-        st.error(
-            f"Error analisis musiman: {e}"
-        )
+        st.error(f"Error analisis musiman: {e}")
 
         return None, None
 
@@ -6543,14 +6252,10 @@ def analyze_tab11_weekend_effect(
 # BUILD UI TAB 11
 # #################################################################
 
-def build_tab11_musiman(
-    df_gmv,
-    df_kalender
-):
 
-    st.header(
-        "⚔️ Analisis Weekend vs Tanggal Merah"
-    )
+def build_tab11_musiman(df_gmv, df_kalender):
+
+    st.header("⚔️ Analisis Weekend vs Tanggal Merah")
 
     st.info(
         "Analisis perbandingan performa omzet antara weekday, weekend, dan hari libur nasional."
@@ -6560,25 +6265,15 @@ def build_tab11_musiman(
     # FIX RECURSION BUG
     # =====================================================
 
-    df_summary, df_raw = (
-        analyze_tab11_weekend_effect(
-            df_gmv,
-            df_kalender
-        )
-    )
+    df_summary, df_raw = analyze_tab11_weekend_effect(df_gmv, df_kalender)
 
     # =====================================================
     # VALIDASI
     # =====================================================
 
-    if (
-        df_summary is None
-        or df_summary.empty
-    ):
+    if df_summary is None or df_summary.empty:
 
-        st.warning(
-            "Tidak ada data hasil analisis."
-        )
+        st.warning("Tidak ada data hasil analisis.")
 
         return
 
@@ -6586,46 +6281,28 @@ def build_tab11_musiman(
     # FORMAT LABEL
     # =====================================================
 
-    df_summary["Label_Total"] = (
-        "Rp "
-        + (
-            df_summary["Total_Omzet"]
-            .fillna(0)
-            .round(0)
-            .astype(int)
-            .map("{:,}".format)
-            .str.replace(",", ".")
-        )
+    df_summary["Label_Total"] = "Rp " + (
+        df_summary["Total_Omzet"]
+        .fillna(0)
+        .round(0)
+        .astype(int)
+        .map("{:,}".format)
+        .str.replace(",", ".")
     )
 
     # =====================================================
     # METRIC
     # =====================================================
 
-    st.subheader(
-        "📊 Ringkasan"
-    )
+    st.subheader("📊 Ringkasan")
 
     c1, c2, c3 = st.columns(3)
 
-    c1.metric(
-        "Total Hari",
-        int(df_summary["Jumlah_Hari"].sum())
-    )
+    c1.metric("Total Hari", int(df_summary["Jumlah_Hari"].sum()))
 
-    c2.metric(
-        "Total Omzet",
-        format_rupiah(
-            df_summary["Total_Omzet"].sum()
-        )
-    )
+    c2.metric("Total Omzet", format_rupiah(df_summary["Total_Omzet"].sum()))
 
-    c3.metric(
-        "Rata-rata Harian",
-        format_rupiah(
-            df_summary["Rata_Rata_Omzet"].mean()
-        )
-    )
+    c3.metric("Rata-rata Harian", format_rupiah(df_summary["Rata_Rata_Omzet"].mean()))
 
     # =====================================================
     # BAR CHART
@@ -6633,9 +6310,7 @@ def build_tab11_musiman(
 
     st.markdown("---")
 
-    st.subheader(
-        "📈 Total Omzet per Jenis Hari"
-    )
+    st.subheader("📈 Total Omzet per Jenis Hari")
 
     fig = px.bar(
         df_summary,
@@ -6643,10 +6318,7 @@ def build_tab11_musiman(
         y="Total_Omzet",
         color="Kategori_Hari",
         text="Label_Total",
-        hover_data=[
-            "Rata_Rata_Omzet",
-            "Jumlah_Hari"
-        ],
+        hover_data=["Rata_Rata_Omzet", "Jumlah_Hari"],
         color_discrete_map={
             "1. Weekday Biasa": "#bdc3c7",
             "2. Weekend Biasa": "#3498db",
@@ -6655,24 +6327,13 @@ def build_tab11_musiman(
         },
     )
 
-    fig.update_traces(
-        textposition="outside"
-    )
+    fig.update_traces(textposition="outside")
 
     fig.update_layout(
-        showlegend=False,
-        height=500,
-        yaxis_title="Total Omzet",
-        margin=dict(
-            t=50,
-            b=50
-        )
+        showlegend=False, height=500, yaxis_title="Total Omzet", margin=dict(t=50, b=50)
     )
 
-    st.plotly_chart(
-        fig,
-        use_container_width=True
-    )
+    st.plotly_chart(fig, use_container_width=True)
 
     # =====================================================
     # TABLE
@@ -6680,27 +6341,15 @@ def build_tab11_musiman(
 
     st.markdown("---")
 
-    st.subheader(
-        "📋 Summary Table"
-    )
+    st.subheader("📋 Summary Table")
 
     show_table = df_summary.copy()
 
-    show_table["Rata_Rata_Omzet"] = (
-        show_table["Rata_Rata_Omzet"]
-        .apply(format_rupiah)
-    )
+    show_table["Rata_Rata_Omzet"] = show_table["Rata_Rata_Omzet"].apply(format_rupiah)
 
-    show_table["Total_Omzet"] = (
-        show_table["Total_Omzet"]
-        .apply(format_rupiah)
-    )
+    show_table["Total_Omzet"] = show_table["Total_Omzet"].apply(format_rupiah)
 
-    st.dataframe(
-        show_table,
-        use_container_width=True,
-        hide_index=True
-    )
+    st.dataframe(show_table, use_container_width=True, hide_index=True)
 
     # =====================================================
     # LIGHTWEIGHT BOXPLOT
@@ -6708,27 +6357,19 @@ def build_tab11_musiman(
 
     st.markdown("---")
 
-    st.subheader(
-        "📦 Distribusi Omzet Harian"
-    )
+    st.subheader("📦 Distribusi Omzet Harian")
 
     fig_box = px.box(
         df_raw,
         x="Kategori_Hari",
         y="Total After Bill Discount",
         color="Kategori_Hari",
-        points="suspectedoutliers"
+        points="suspectedoutliers",
     )
 
-    fig_box.update_layout(
-        showlegend=False,
-        height=500
-    )
+    fig_box.update_layout(showlegend=False, height=500)
 
-    st.plotly_chart(
-        fig_box,
-        use_container_width=True
-    )
+    st.plotly_chart(fig_box, use_container_width=True)
 
     # =====================================================
     # INSIGHT
@@ -6736,36 +6377,17 @@ def build_tab11_musiman(
 
     st.markdown("---")
 
-    st.header(
-        "💡 Insight"
-    )
+    st.header("💡 Insight")
 
-    data_avg = dict(
-        zip(
-            df_summary["Kategori_Hari"],
-            df_summary["Rata_Rata_Omzet"]
-        )
-    )
+    data_avg = dict(zip(df_summary["Kategori_Hari"], df_summary["Rata_Rata_Omzet"]))
 
-    avg_wd = data_avg.get(
-        "1. Weekday Biasa",
-        0
-    )
+    avg_wd = data_avg.get("1. Weekday Biasa", 0)
 
-    avg_we = data_avg.get(
-        "2. Weekend Biasa",
-        0
-    )
+    avg_we = data_avg.get("2. Weekend Biasa", 0)
 
-    avg_libur = data_avg.get(
-        "3. Weekday Libur",
-        0
-    )
+    avg_libur = data_avg.get("3. Weekday Libur", 0)
 
-    avg_we_libur = data_avg.get(
-        "4. Weekend & Libur",
-        0
-    )
+    avg_we_libur = data_avg.get("4. Weekend & Libur", 0)
 
     col1, col2 = st.columns(2)
 
@@ -6775,20 +6397,11 @@ def build_tab11_musiman(
 
     with col1:
 
-        st.subheader(
-            "📅 Efek Tanggal Merah"
-        )
+        st.subheader("📅 Efek Tanggal Merah")
 
-        if (
-            avg_wd > 0
-            and avg_libur > 0
-        ):
+        if avg_wd > 0 and avg_libur > 0:
 
-            diff = (
-                (
-                    avg_libur - avg_wd
-                ) / avg_wd
-            ) * 100
+            diff = ((avg_libur - avg_wd) / avg_wd) * 100
 
             if diff > 0:
 
@@ -6810,9 +6423,7 @@ def build_tab11_musiman(
 
         else:
 
-            st.info(
-                "Data weekday libur belum tersedia."
-            )
+            st.info("Data weekday libur belum tersedia.")
 
     # =====================================================
     # INSIGHT 2
@@ -6820,47 +6431,32 @@ def build_tab11_musiman(
 
     with col2:
 
-        st.subheader(
-            "🆚 Weekend vs Libur"
-        )
+        st.subheader("🆚 Weekend vs Libur")
 
-        if (
-            avg_we > 0
-            and avg_libur > 0
-        ):
+        if avg_we > 0 and avg_libur > 0:
 
             if avg_we > avg_libur:
 
-                st.info(
-                    "Weekend biasa lebih kuat "
-                    "dibanding weekday libur."
-                )
+                st.info("Weekend biasa lebih kuat " "dibanding weekday libur.")
 
             else:
 
                 st.success(
-                    "Tanggal merah weekday "
-                    "lebih kuat dibanding weekend biasa."
+                    "Tanggal merah weekday " "lebih kuat dibanding weekend biasa."
                 )
 
         else:
 
-            st.info(
-                "Data pembanding belum cukup."
-            )
+            st.info("Data pembanding belum cukup.")
 
     # =====================================================
     # DETAIL DATA
     # =====================================================
 
-    with st.expander(
-        "📄 Lihat Detail Data"
-    ):
+    with st.expander("📄 Lihat Detail Data"):
 
-        st.dataframe(
-            df_raw.head(1000),
-            use_container_width=True
-        )
+        st.dataframe(df_raw.head(1000), use_container_width=True)
+
 
 # TAB 12
 def build_tab_unique_features(df_gmv, df_cogs):
@@ -7126,8 +6722,8 @@ def build_tab_unique_features(df_gmv, df_cogs):
         st.error(f"Terjadi error di Lab Strategi: {e}")
 
 
-
 # TAB 13
+
 
 def build_tab13_pl(df_pl):
     """
@@ -7140,18 +6736,14 @@ def build_tab13_pl(df_pl):
     import plotly.graph_objects as go
 
     st.header("📉 Profit & Loss Dashboard")
-    st.caption(
-        "Ringkasan performa bisnis dan profitabilitas perusahaan."
-    )
+    st.caption("Ringkasan performa bisnis dan profitabilitas perusahaan.")
 
     # =========================================================
     # VALIDATION
     # =========================================================
 
     if df_pl is None or df_pl.empty:
-        st.warning(
-            "⚠️ Data P&L belum tersedia. Silakan upload file terlebih dahulu."
-        )
+        st.warning("⚠️ Data P&L belum tersedia. Silakan upload file terlebih dahulu.")
         return
 
     # =========================================================
@@ -7160,19 +6752,11 @@ def build_tab13_pl(df_pl):
 
     if "Year_Type" in df_pl.columns:
 
-        years = sorted(
-            df_pl["Year_Type"].dropna().unique(),
-            reverse=True
-        )
+        years = sorted(df_pl["Year_Type"].dropna().unique(), reverse=True)
 
-        selected_year = st.selectbox(
-            "📅 Pilih Periode",
-            years
-        )
+        selected_year = st.selectbox("📅 Pilih Periode", years)
 
-        df_filtered = df_pl[
-            df_pl["Year_Type"] == selected_year
-        ]
+        df_filtered = df_pl[df_pl["Year_Type"] == selected_year]
 
     else:
         df_filtered = df_pl.copy()
@@ -7186,26 +6770,17 @@ def build_tab13_pl(df_pl):
     # =========================================================
 
     if "Date" in df_filtered.columns:
-        df_filtered["Date"] = pd.to_datetime(
-            df_filtered["Date"],
-            errors="coerce"
-        )
+        df_filtered["Date"] = pd.to_datetime(df_filtered["Date"], errors="coerce")
 
     # =========================================================
     # MAIN KPI
     # =========================================================
 
-    total_revenue = df_filtered[
-        df_filtered["Category"] == "Revenue"
-    ]["Value"].sum()
+    total_revenue = df_filtered[df_filtered["Category"] == "Revenue"]["Value"].sum()
 
-    total_cogs = df_filtered[
-        df_filtered["Category"] == "COGS"
-    ]["Value"].sum()
+    total_cogs = df_filtered[df_filtered["Category"] == "COGS"]["Value"].sum()
 
-    total_expense = df_filtered[
-        df_filtered["Category"] == "Expense"
-    ]["Value"].sum()
+    total_expense = df_filtered[df_filtered["Category"] == "Expense"]["Value"].sum()
 
     gross_profit = total_revenue - total_cogs
 
@@ -7215,25 +6790,13 @@ def build_tab13_pl(df_pl):
     # PERCENTAGE
     # =========================================================
 
-    gp_margin = (
-        (gross_profit / total_revenue) * 100
-        if total_revenue > 0 else 0
-    )
+    gp_margin = (gross_profit / total_revenue) * 100 if total_revenue > 0 else 0
 
-    np_margin = (
-        (net_profit / total_revenue) * 100
-        if total_revenue > 0 else 0
-    )
+    np_margin = (net_profit / total_revenue) * 100 if total_revenue > 0 else 0
 
-    cogs_pct = (
-        (total_cogs / total_revenue) * 100
-        if total_revenue > 0 else 0
-    )
+    cogs_pct = (total_cogs / total_revenue) * 100 if total_revenue > 0 else 0
 
-    expense_pct = (
-        (total_expense / total_revenue) * 100
-        if total_revenue > 0 else 0
-    )
+    expense_pct = (total_expense / total_revenue) * 100 if total_revenue > 0 else 0
 
     # =========================================================
     # KPI CARDS
@@ -7244,37 +6807,18 @@ def build_tab13_pl(df_pl):
     # ROW 1
     c1, c2, c3 = st.columns(3)
 
-    c1.metric(
-        "Revenue",
-        format_rupiah(total_revenue)
-    )
+    c1.metric("Revenue", format_rupiah(total_revenue))
 
-    c2.metric(
-        "COGS",
-        format_rupiah(total_cogs),
-        f"{cogs_pct:.1f}%"
-    )
+    c2.metric("COGS", format_rupiah(total_cogs), f"{cogs_pct:.1f}%")
 
-    c3.metric(
-        "Gross Profit",
-        format_rupiah(gross_profit),
-        f"{gp_margin:.1f}%"
-    )
+    c3.metric("Gross Profit", format_rupiah(gross_profit), f"{gp_margin:.1f}%")
 
     # ROW 2
     c4, c5 = st.columns(2)
 
-    c4.metric(
-        "Operating Expense",
-        format_rupiah(total_expense),
-        f"{expense_pct:.1f}%"
-    )
+    c4.metric("Operating Expense", format_rupiah(total_expense), f"{expense_pct:.1f}%")
 
-    c5.metric(
-        "Net Profit",
-        format_rupiah(net_profit),
-        f"{np_margin:.1f}%"
-    )
+    c5.metric("Net Profit", format_rupiah(net_profit), f"{np_margin:.1f}%")
 
     st.markdown("---")
 
@@ -7324,28 +6868,16 @@ def build_tab13_pl(df_pl):
 
         st.markdown("#### 💧 Profit Flow")
 
-        measures = [
-            "relative",
-            "relative",
-            "total",
-            "relative",
-            "total"
-        ]
+        measures = ["relative", "relative", "total", "relative", "total"]
 
-        x_labels = [
-            "Revenue",
-            "COGS",
-            "Gross Profit",
-            "Expense",
-            "Net Profit"
-        ]
+        x_labels = ["Revenue", "COGS", "Gross Profit", "Expense", "Net Profit"]
 
         y_values = [
             total_revenue,
             -total_cogs,
             gross_profit,
             -total_expense,
-            net_profit
+            net_profit,
         ]
 
         fig_waterfall = go.Figure(
@@ -7353,23 +6885,12 @@ def build_tab13_pl(df_pl):
                 measure=measures,
                 x=x_labels,
                 y=y_values,
-                text=[
-                    format_rupiah(v)
-                    for v in y_values
-                ],
+                text=[format_rupiah(v) for v in y_values],
                 textposition="outside",
-                connector={
-                    "line": {"color": "#BDC3C7"}
-                },
-                increasing={
-                    "marker": {"color": "#2ECC71"}
-                },
-                decreasing={
-                    "marker": {"color": "#E74C3C"}
-                },
-                totals={
-                    "marker": {"color": "#3498DB"}
-                },
+                connector={"line": {"color": "#BDC3C7"}},
+                increasing={"marker": {"color": "#2ECC71"}},
+                decreasing={"marker": {"color": "#E74C3C"}},
+                totals={"marker": {"color": "#3498DB"}},
             )
         )
 
@@ -7377,18 +6898,10 @@ def build_tab13_pl(df_pl):
             template="plotly_white",
             height=420,
             showlegend=False,
-            margin=dict(
-                l=10,
-                r=10,
-                t=10,
-                b=10
-            )
+            margin=dict(l=10, r=10, t=10, b=10),
         )
 
-        st.plotly_chart(
-            fig_waterfall,
-            use_container_width=True
-        )
+        st.plotly_chart(fig_waterfall, use_container_width=True)
 
     # =========================================================
     # TREND CHART
@@ -7403,29 +6916,14 @@ def build_tab13_pl(df_pl):
             df_monthly = (
                 df_filtered.groupby("Date")
                 .apply(
-                    lambda x: pd.Series({
-                        "Revenue":
-                            x[
-                                x["Category"] == "Revenue"
-                            ]["Value"].sum(),
-
-                        "Net_Profit":
-                            x[
-                                x["Category"] == "Revenue"
-                            ]["Value"].sum()
-
-                            -
-
-                            x[
-                                x["Category"] == "COGS"
-                            ]["Value"].sum()
-
-                            -
-
-                            x[
-                                x["Category"] == "Expense"
-                            ]["Value"].sum()
-                    })
+                    lambda x: pd.Series(
+                        {
+                            "Revenue": x[x["Category"] == "Revenue"]["Value"].sum(),
+                            "Net_Profit": x[x["Category"] == "Revenue"]["Value"].sum()
+                            - x[x["Category"] == "COGS"]["Value"].sum()
+                            - x[x["Category"] == "Expense"]["Value"].sum(),
+                        }
+                    )
                 )
                 .reset_index()
             )
@@ -7437,7 +6935,7 @@ def build_tab13_pl(df_pl):
                     x=df_monthly["Date"],
                     y=df_monthly["Revenue"],
                     name="Revenue",
-                    opacity=0.7
+                    opacity=0.7,
                 )
             )
 
@@ -7446,7 +6944,7 @@ def build_tab13_pl(df_pl):
                     x=df_monthly["Date"],
                     y=df_monthly["Net_Profit"],
                     name="Net Profit",
-                    mode="lines+markers"
+                    mode="lines+markers",
                 )
             )
 
@@ -7454,18 +6952,10 @@ def build_tab13_pl(df_pl):
                 template="plotly_white",
                 height=420,
                 hovermode="x unified",
-                margin=dict(
-                    l=10,
-                    r=10,
-                    t=10,
-                    b=10
-                )
+                margin=dict(l=10, r=10, t=10, b=10),
             )
 
-            st.plotly_chart(
-                fig_trend,
-                use_container_width=True
-            )
+            st.plotly_chart(fig_trend, use_container_width=True)
 
         else:
             st.info("Kolom Date tidak ditemukan.")
@@ -7486,43 +6976,19 @@ def build_tab13_pl(df_pl):
 
     with col3:
 
-        donut_values = [
-            total_cogs,
-            total_expense,
-            max(net_profit, 0)
-        ]
+        donut_values = [total_cogs, total_expense, max(net_profit, 0)]
 
-        donut_labels = [
-            "COGS",
-            "Expense",
-            "Net Profit"
-        ]
+        donut_labels = ["COGS", "Expense", "Net Profit"]
 
         fig_donut = go.Figure(
-            data=[
-                go.Pie(
-                    labels=donut_labels,
-                    values=donut_values,
-                    hole=0.55
-                )
-            ]
+            data=[go.Pie(labels=donut_labels, values=donut_values, hole=0.55)]
         )
 
         fig_donut.update_layout(
-            template="plotly_white",
-            height=350,
-            margin=dict(
-                l=10,
-                r=10,
-                t=10,
-                b=10
-            )
+            template="plotly_white", height=350, margin=dict(l=10, r=10, t=10, b=10)
         )
 
-        st.plotly_chart(
-            fig_donut,
-            use_container_width=True
-        )
+        st.plotly_chart(fig_donut, use_container_width=True)
 
     # =========================================================
     # TOP EXPENSES
@@ -7530,9 +6996,7 @@ def build_tab13_pl(df_pl):
 
     with col4:
 
-        df_exp = df_filtered[
-            df_filtered["Category"] == "Expense"
-        ]
+        df_exp = df_filtered[df_filtered["Category"] == "Expense"]
 
         st.markdown("#### 🔥 Top Expense")
 
@@ -7542,10 +7006,7 @@ def build_tab13_pl(df_pl):
                 df_exp.groupby("Description")["Value"]
                 .sum()
                 .reset_index()
-                .sort_values(
-                    "Value",
-                    ascending=False
-                )
+                .sort_values("Value", ascending=False)
                 .head(10)
             )
 
@@ -7554,32 +7015,19 @@ def build_tab13_pl(df_pl):
                     x=top_exp["Value"],
                     y=top_exp["Description"],
                     orientation="h",
-                    text=[
-                        format_rupiah(v)
-                        for v in top_exp["Value"]
-                    ],
-                    textposition="auto"
+                    text=[format_rupiah(v) for v in top_exp["Value"]],
+                    textposition="auto",
                 )
             )
 
             fig_bar.update_layout(
                 template="plotly_white",
                 height=350,
-                yaxis=dict(
-                    autorange="reversed"
-                ),
-                margin=dict(
-                    l=10,
-                    r=10,
-                    t=10,
-                    b=10
-                )
+                yaxis=dict(autorange="reversed"),
+                margin=dict(l=10, r=10, t=10, b=10),
             )
 
-            st.plotly_chart(
-                fig_bar,
-                use_container_width=True
-            )
+            st.plotly_chart(fig_bar, use_container_width=True)
 
         else:
             st.info("Data expense tidak ditemukan.")
@@ -7595,34 +7043,22 @@ def build_tab13_pl(df_pl):
     insights = []
 
     if cogs_pct > 45:
-        insights.append(
-            "COGS cukup tinggi. Evaluasi food cost dan supplier."
-        )
+        insights.append("COGS cukup tinggi. Evaluasi food cost dan supplier.")
 
     if expense_pct > 30:
-        insights.append(
-            "Operating expense tinggi dan perlu dikontrol."
-        )
+        insights.append("Operating expense tinggi dan perlu dikontrol.")
 
     if np_margin < 10:
-        insights.append(
-            "Margin profit rendah. Fokus pada efisiensi operasional."
-        )
+        insights.append("Margin profit rendah. Fokus pada efisiensi operasional.")
 
     if np_margin > 20:
-        insights.append(
-            "Profit bisnis sangat sehat."
-        )
+        insights.append("Profit bisnis sangat sehat.")
 
     if gross_profit < 0:
-        insights.append(
-            "Gross profit negatif. Harga jual kemungkinan terlalu rendah."
-        )
+        insights.append("Gross profit negatif. Harga jual kemungkinan terlalu rendah.")
 
     if not insights:
-        insights.append(
-            "Kondisi bisnis relatif stabil."
-        )
+        insights.append("Kondisi bisnis relatif stabil.")
 
     with st.container(border=True):
 
@@ -7641,26 +7077,19 @@ def build_tab13_pl(df_pl):
                 df_exp.groupby("Description")["Value"]
                 .sum()
                 .reset_index()
-                .sort_values(
-                    "Value",
-                    ascending=False
-                )
+                .sort_values("Value", ascending=False)
             )
 
-            detail_table["Value"] = detail_table[
-                "Value"
-            ].apply(format_rupiah)
+            detail_table["Value"] = detail_table["Value"].apply(format_rupiah)
 
             st.dataframe(
                 detail_table.rename(
-                    columns={
-                        "Description": "Expense",
-                        "Value": "Total"
-                    }
+                    columns={"Description": "Expense", "Value": "Total"}
                 ),
                 use_container_width=True,
-                hide_index=True
+                hide_index=True,
             )
+
 
 # #################################################################
 # --- [PINDAHKAN FUNGSI HELPER LOTTIE/WELCOME/FOOTER KE SINI] ---
@@ -7800,8 +7229,7 @@ def build_welcome_screen():
 
     # 3. Penjelasan Fitur (YANG SUDAH DIPERBARUI)
     st.header("✨ Apa yang Bisa Anda Lakukan?")
-    st.markdown(
-        """
+    st.markdown("""
     * **📊 Analisis Penjualan (GMV):** Lihat performa penjualan, menu terlaris, dan jam sibuk.
     * **💰 Analisis COGS & Profit:** Temukan menu mana yang paling *profitabel*, bukan hanya paling laku.
     * **🧑‍🍳 Kinerja SDM:** Lacak performa waiter, Cek Anomali Transaksi dan lihat siapa top sales Anda.
@@ -7815,8 +7243,7 @@ def build_welcome_screen():
     * **✨ Analisis Musiman:** Pahami pola penjualan saat Hari Libur Nasional vs Hari Biasa.
     * **🍔 Strategi Menu:** Temukan menu 'Juara' di setiap musim untuk optimasi stok.
     * **🧪 Lab Strategi:** Tentukan nasib menu (Stars/Dogs) dan simulasikan perubahan harga.
-    """
-    )
+    """)
     st.markdown("---")
 
 
@@ -7851,18 +7278,18 @@ def main():
     # --- 1. INISIALISASI SESSION STATE (LENGKAP) ---
     # #############################################################
     defaults = {
-        "save_gmv_flag":      False,
-        "save_cogs_flag":     False,
-        "save_waiter_flag":   False,
-        "save_ulasan_flag":   False,
+        "save_gmv_flag": False,
+        "save_cogs_flag": False,
+        "save_waiter_flag": False,
+        "save_ulasan_flag": False,
         "save_purchase_flag": False,
-        "save_pl_flag":       False,
-        "gmv_saved_status":      False,
-        "cogs_saved_status":     False,
-        "waiter_saved_status":   False,
-        "ulasan_saved_status":   False,
+        "save_pl_flag": False,
+        "gmv_saved_status": False,
+        "cogs_saved_status": False,
+        "waiter_saved_status": False,
+        "ulasan_saved_status": False,
         "purchase_saved_status": False,
-        "pl_saved_status":       False,
+        "pl_saved_status": False,
         "use_db": False,
     }
     for key, val in defaults.items():
@@ -7889,17 +7316,17 @@ def main():
     data_pl = None
 
     with st.spinner("Memuat data pendukung..."):
-        data_cogs     = load_cogs_data(cogs_file, use_db)
-        data_waiter   = load_data_waiter(waiter_file, use_db)
-        data_ulasan   = load_data_ulasan(ulasan_file, use_db)
+        data_cogs = load_cogs_data(cogs_file, use_db)
+        data_waiter = load_data_waiter(waiter_file, use_db)
+        data_ulasan = load_data_ulasan(ulasan_file, use_db)
         data_purchase = load_data_purchase(purchase_file, use_db)
-        data_pl       = load_pl_data(pl_file, use_db)
+        data_pl = load_pl_data(pl_file, use_db)
         data_kalender = load_kalender_data("kalender/kalender_event1.csv")
 
-    # #############################################################
-    # --- 4. LOGIKA PENYIMPANAN DATA (LENGKAP) ---
-    # #############################################################
-# SESUDAH (yang benar)
+        # #############################################################
+        # --- 4. LOGIKA PENYIMPANAN DATA (LENGKAP) ---
+        # #############################################################
+        # SESUDAH (yang benar)
         def clear_db_cache_and_rerun():
             load_dataframe_from_db.clear()
             load_data_gmv.clear()
@@ -7944,7 +7371,9 @@ def main():
 
         if st.session_state.save_purchase_flag:
             if data_purchase is not None:
-                save_dataframe_smart_append(data_purchase, "purchase_data", "Purchase Date")
+                save_dataframe_smart_append(
+                    data_purchase, "purchase_data", "Purchase Date"
+                )
                 st.session_state.purchase_saved_status = True
             st.session_state.save_purchase_flag = False
             clear_db_cache_and_rerun()
@@ -7966,7 +7395,11 @@ def main():
             filtered_purchase,
             filtered_pl,
         ) = build_global_filters(
-            data_gmv, data_cogs, data_waiter, data_purchase, data_pl,
+            data_gmv,
+            data_cogs,
+            data_waiter,
+            data_purchase,
+            data_pl,
         )
 
         # #############################################################
@@ -8003,7 +7436,9 @@ def main():
 
         if not all_data_is_missing and data_gmv is None:
             st.title("Dashboard Analisis Data F&B")
-            st.info("Mode analisis parsial. Beberapa fitur mungkin nonaktif karena data GMV tidak ada.")
+            st.info(
+                "Mode analisis parsial. Beberapa fitur mungkin nonaktif karena data GMV tidak ada."
+            )
 
         # #############################################################
         # --- 7. NAVIGASI HALAMAN ---
@@ -8063,6 +7498,7 @@ def main():
             build_admin_panel()
 
         build_footer()
+
 
 # #################################################################
 # --- ENTRY POINT APLIKASI ---
