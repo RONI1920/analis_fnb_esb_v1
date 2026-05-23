@@ -2498,54 +2498,64 @@ def build_tab1_sales(filtered_gmv):
                         .reset_index()
                     )
 
-                    # Grafik Kategori (Plotly)
-                fig_kategori = px.bar(
-                    data_untuk_grafik_atas,
-                    x="Qty",
-                    y="Menu Category",
-                    orientation="h",
-                    title=title_grafik_atas,
-                    color="Qty",
-                    color_continuous_scale="Blues",
-                    template="plotly_dark",
-                )
-                fig_kategori.update_layout(
-                    yaxis={"categoryorder": "total ascending"},
-                    coloraxis_showscale=False,
-                    xaxis={"side": "top"},
-                    margin=dict(l=0, r=20, t=60, b=20),
-                )
-                st.plotly_chart(fig_kategori, use_container_width=True)
-
-                # Selectbox untuk drill-down
-                selected_cat = st.selectbox(
-                    "🔍 Pilih Kategori untuk melihat detail menu:",
-                    options=["(Pilih Kategori)"]
-                    + data_untuk_grafik_atas["Menu Category"].tolist(),
-                    key="selectbox_kategori_tab1",
-                )
-
-                if selected_cat != "(Pilih Kategori)":
-                    detail_data = data_menu_item[
-                        data_menu_item["Menu Category"] == selected_cat
-                    ]
-                    fig_detail = px.bar(
-                        detail_data,
+                    # Grafik Kategori (Plotly dengan klik interaktif)
+                    fig_kategori = px.bar(
+                        data_untuk_grafik_atas,
                         x="Qty",
-                        y="Menu",
+                        y="Menu Category",
                         orientation="h",
-                        title=f"Detail Menu: {selected_cat}",
+                        title=title_grafik_atas,
                         color="Qty",
-                        color_continuous_scale="Oranges",
+                        color_continuous_scale="Blues",
                         template="plotly_dark",
                     )
-                    fig_detail.update_layout(
+                    fig_kategori.update_layout(
                         yaxis={"categoryorder": "total ascending"},
                         coloraxis_showscale=False,
                         xaxis={"side": "top"},
                         margin=dict(l=0, r=20, t=60, b=20),
                     )
-                    st.plotly_chart(fig_detail, use_container_width=True)
+
+                    # on_select memungkinkan klik interaktif
+                    selected_event = st.plotly_chart(
+                        fig_kategori,
+                        use_container_width=True,
+                        on_select="rerun",
+                        key="chart_kategori_tab1",
+                    )
+
+                    # Ambil kategori yang diklik
+                    selected_cat = None
+                    if selected_event and selected_event.selection.points:
+                        selected_cat = selected_event.selection.points[0]["y"]
+
+                    # Tampilkan detail jika ada yang diklik
+                    if selected_cat:
+                        st.info(f"Menampilkan detail untuk: **{selected_cat}**")
+                        detail_data = data_menu_item[
+                            data_menu_item["Menu Category"] == selected_cat
+                        ]
+                        fig_detail = px.bar(
+                            detail_data,
+                            x="Qty",
+                            y="Menu",
+                            orientation="h",
+                            title=f"Detail Menu: {selected_cat}",
+                            color="Qty",
+                            color_continuous_scale="Oranges",
+                            template="plotly_dark",
+                        )
+                        fig_detail.update_layout(
+                            yaxis={"categoryorder": "total ascending"},
+                            coloraxis_showscale=False,
+                            xaxis={"side": "top"},
+                            margin=dict(l=0, r=20, t=60, b=20),
+                        )
+                        st.plotly_chart(fig_detail, use_container_width=True)
+                    else:
+                        st.info(
+                            "👆 Klik salah satu batang di atas untuk melihat detail menu per kategori."
+                        )
 
             elif "Menu Category" in filtered_gmv.columns:
                 st.warning("Data kategori menu tidak ditemukan untuk periode ini.")
